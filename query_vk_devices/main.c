@@ -71,19 +71,26 @@ print_instance_extension (char *layer_name)
         err = vkEnumerateInstanceExtensionProperties(layer_name, &inst_ext_cnt, vk_exts);
     } while (err == VK_INCOMPLETE);  /* need to retry ? */
 
-
-    fprintf(stderr, "\n");
-    fprintf(stderr, "-----------------------------------------------------\n");
     if (layer_name)
-        fprintf(stderr, " Instance Extension (LAYER:%s) count : %d\n", layer_name, inst_ext_cnt);
-    else
-        fprintf(stderr, " Instance Extension (GLOBAL) count : %d\n", inst_ext_cnt);
-    fprintf(stderr, "-----------------------------------------------------\n");
-
-    for (uint32_t i = 0; i < inst_ext_cnt; i++) 
     {
-        fprintf(stderr, "  %-40s ver:%2d\n", vk_exts[i].extensionName, vk_exts[i].specVersion);
+        fprintf(stderr, " Instance Extension count : %d\n", inst_ext_cnt);
+        for (uint32_t i = 0; i < inst_ext_cnt; i++) 
+        {
+            fprintf(stderr, "    %-40s ver:%2d\n", vk_exts[i].extensionName, vk_exts[i].specVersion);
+        }
     }
+    else
+    {
+        fprintf(stderr, "\n");
+        fprintf(stderr, "-----------------------------------------------------\n");
+        fprintf(stderr, " Instance Extension (GLOBAL) count : %d\n", inst_ext_cnt);
+        fprintf(stderr, "-----------------------------------------------------\n");
+        for (uint32_t i = 0; i < inst_ext_cnt; i++) 
+        {
+            fprintf(stderr, "  %-40s ver:%2d\n", vk_exts[i].extensionName, vk_exts[i].specVersion);
+        }
+    }
+
     free (vk_exts);
 
     return err;
@@ -117,9 +124,12 @@ print_global_layer_properties()
 
     for (uint32_t i = 0; i < instance_layer_count; i++) 
     {
-        fprintf(stderr, "----- VkLayerProperties[%d/%d] ----- \n", i, instance_layer_count);
+        fprintf(stderr, " ----- VkLayerProperties[%d/%d]\n", i, instance_layer_count);
         fprintf(stderr, " LayerName    : %s\n", vk_props[i].layerName);
-        fprintf(stderr, " Spec Version : %d\n", vk_props[i].specVersion);
+        fprintf(stderr, " Spec Version : %d.%d.%d\n", 
+                                                 VK_VERSION_MAJOR(vk_props[i].specVersion),
+                                                 VK_VERSION_MINOR(vk_props[i].specVersion),
+                                                 VK_VERSION_PATCH(vk_props[i].specVersion));
         fprintf(stderr, " Impl Version : %d\n", vk_props[i].implementationVersion);
         fprintf(stderr, " Description  : %s\n", vk_props[i].description);
 
