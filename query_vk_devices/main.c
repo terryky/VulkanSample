@@ -76,7 +76,7 @@ print_instance_extension (char *layer_name)
         fprintf(stderr, " Instance Extension count : %d\n", inst_ext_cnt);
         for (uint32_t i = 0; i < inst_ext_cnt; i++) 
         {
-            fprintf(stderr, "    %-40s ver:%2d\n", vk_exts[i].extensionName, vk_exts[i].specVersion);
+            fprintf(stderr, "   %-40s ver:%2d\n", vk_exts[i].extensionName, vk_exts[i].specVersion);
         }
     }
     else
@@ -124,6 +124,7 @@ print_global_layer_properties()
 
     for (uint32_t i = 0; i < instance_layer_count; i++) 
     {
+        fprintf(stderr, "\n");
         fprintf(stderr, " ----- VkLayerProperties[%d/%d]\n", i, instance_layer_count);
         fprintf(stderr, " LayerName    : %s\n", vk_props[i].layerName);
         fprintf(stderr, " Spec Version : %d.%d.%d\n", 
