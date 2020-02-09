@@ -37,6 +37,50 @@ extern "C" {
     }                                                                           \
 }
 
+
+typedef struct _vk_t
+{
+    VkInstance                          instance;
+    VkPhysicalDevice                    phydev;
+    VkPhysicalDeviceMemoryProperties    phymem_props;
+
+    uint32_t                            qidx_graphics;
+    uint32_t                            qidx_compute;
+    uint32_t                            qidx_transfer;
+
+    VkDevice                            dev;
+    VkQueue                             devq;
+
+    VkCommandPool                       cmd_pool;
+
+    VkSurfaceKHR                        surface;
+    VkSurfaceFormatKHR                  sfc_fmt;
+    VkSurfaceCapabilitiesKHR            sfc_caps;
+
+    /* Swap Chain */
+    VkSwapchainKHR                      swapchain;
+    VkExtent2D                          swapchain_extent;
+    VkImage                             *swapchain_imgs;
+    VkImageView                         *swapchain_views;
+
+    /* Depth Buffer */
+    VkImage                             dbuf;
+    VkDeviceMemory                      dbuf_mem;
+    VkImageView                         dbuf_view;
+
+    VkRenderPass                        render_pass;
+    VkFramebuffer                       *framebuffers;
+
+    VkCommandBuffer                     *cmd_bufs;
+    VkFence                             *fences;
+    VkSemaphore                         sem_render_complete;
+    VkSemaphore                         sem_present_complete;
+
+    uint32_t                            image_index;
+
+} vk_t;
+
+
 #ifdef __cplusplus
 }
 #endif
