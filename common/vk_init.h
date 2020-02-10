@@ -12,9 +12,14 @@ extern "C" {
 #include <vulkan/vulkan.h>
 
 
-int vk_init (int win_w, int win_h);
+vk_t    *vk_init (int win_w, int win_h);
+int     vk_create_buffer (vk_t *vk, uint32_t size, VkBufferUsageFlags usage, void *psrc, vk_buffer_t *vk_buf);
+int     vk_load_shader_module (vk_t *vk, const char* fname, VkShaderModule *sm);
 
-    
+int     vk_create_sampler (vk_t *vk, VkSampler *samp);
+
+
+
 #ifdef __cplusplus
 }
 #endif

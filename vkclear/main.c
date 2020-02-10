@@ -14,10 +14,10 @@
 int 
 main (int argc, char *argv[])
 {
-    vk_init (960, 540);
+    vk_t *vk = vk_init (960, 540);
  
     while (1)
     {
-        vk_render ();
+        vk_render (vk, NULL, NULL);
     }
 }

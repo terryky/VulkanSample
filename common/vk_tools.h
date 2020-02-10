@@ -37,6 +37,13 @@ extern "C" {
     }                                                                           \
 }
 
+#define ARRAY_LENGTH(array) (sizeof(array) / sizeof(array[0]))
+
+
+#ifndef UNUSED
+#define UNUSED(x) (void)(x)
+#endif
+
 
 typedef struct _vk_t
 {
@@ -80,6 +87,12 @@ typedef struct _vk_t
 
 } vk_t;
 
+
+typedef struct _vt_buffer_t
+{
+    VkBuffer        buf;
+    VkDeviceMemory  mem;
+} vk_buffer_t;
 
 #ifdef __cplusplus
 }

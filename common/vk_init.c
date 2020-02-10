@@ -4,6 +4,7 @@
  * ------------------------------------------------ */
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <stdbool.h>
 #include <assert.h>
 #include <vulkan/vulkan.h>
@@ -51,6 +52,12 @@ vkin_create_instance (const char* app_name)
     ci.ppEnabledExtensionNames = inst_ext;
     ci.enabledLayerCount       = inst_lyr_num;
     ci.ppEnabledLayerNames     = inst_lyr;
+
+#if 0
+    const char* layers[] = { "VK_LAYER_LUNARG_standard_validation" };
+    ci.enabledLayerCount   = 1;
+    ci.ppEnabledLayerNames = layers;
+#endif
 
     VK_CHECK (vkCreateInstance (&ci, NULL, &vk.instance));
 
@@ -472,8 +479,112 @@ vkin_create_semaphore ()
     return 0;
 }
 
+int
+vk_create_buffer (vk_t *vk, uint32_t size, VkBufferUsageFlags usage, void *psrc, vk_buffer_t *vk_buf)
+{
+    VkBuffer        buf;
+    VkDeviceMemory  mem;
+
+    /* create VkBuffer */
+    VkBufferCreateInfo ci = {0};
+    ci.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    ci.usage = usage;
+    ci.size  = size;
+    VK_CHECK (vkCreateBuffer (vk->dev, &ci, NULL, &buf));
+
+    /* Allocate Memory for VkBuffer */
+    VkMemoryRequirements reqs;
+    vkGetBufferMemoryRequirements (vk->dev, buf, &reqs);
+
+    VkMemoryAllocateInfo ai = {0};
+    ai.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    ai.allocationSize  = reqs.size;
+    ai.memoryTypeIndex = getMemoryTypeIndex (reqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+
+    VK_CHECK (vkAllocateMemory (vk->dev, &ai, NULL, &mem));
+
+    /* bind */
+    VK_CHECK (vkBindBufferMemory (vk->dev, buf, mem, 0));
+
+    if (psrc)
+    {
+        void* p;
+        VK_CHECK (vkMapMemory (vk->dev, mem, 0, VK_WHOLE_SIZE, 0, &p));
+        memcpy (p, psrc, size);
+        vkUnmapMemory (vk->dev, mem);
+    }
+
+
+    vk_buf->buf = buf;
+    vk_buf->mem = mem;
+    return 0;
+}
+
 
 int
+vk_create_sampler (vk_t *vk, VkSampler *samp)
+{
+    VkSampler sampler;
+
+    VkSamplerCreateInfo ci = {0};
+    ci.sType         = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    ci.minFilter     = VK_FILTER_LINEAR;
+    ci.magFilter     = VK_FILTER_LINEAR;
+    ci.addressModeU  = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    ci.addressModeV  = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    ci.maxAnisotropy = 1.0f;
+    ci.borderColor   = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+
+    VK_CHECK (vkCreateSampler (vk->dev, &ci, NULL, &sampler));
+
+    *samp = sampler;
+    return 0;
+}
+
+
+int
+vk_load_shader_module (vk_t *vk, const char* fname, VkShaderModule *sm)
+{
+    FILE *fp;
+    char *lpbuf;
+    int  file_size;
+    int  read_size;
+
+    fp = fopen (fname, "rb");
+    if (fp == NULL)
+    {
+        VK_LOGE ("can't open %s\n", fname);
+        return -1;
+    }
+
+    fseek (fp, 0, SEEK_END);
+    file_size = ftell (fp);
+    fseek (fp, 0, SEEK_SET);
+
+    lpbuf = VK_CALLOC (char, file_size);
+
+    read_size = fread (lpbuf, 1, file_size, fp);
+    if (file_size != read_size)
+    {
+        VK_LOGE ("can't read %s\n", fname);
+        return -1;
+    }
+
+    /* ceate a new shader module */
+    VkShaderModuleCreateInfo ci = {0};
+    ci.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    ci.pCode    = (uint32_t *)lpbuf;
+    ci.codeSize = file_size;
+
+    VkShaderModule shaderModule;
+    VK_CHECK (vkCreateShaderModule (vk->dev, &ci, NULL, &shaderModule));
+
+    *sm = shaderModule;
+    return 0;
+}
+
+
+vk_t *
 vk_init (int win_w, int win_h)
 {
     vkin_create_instance ("VulkanApp");
@@ -506,5 +617,5 @@ vk_init (int win_w, int win_h)
 
     vkin_create_semaphore ();
 
-    return 0;
+    return &vk;
 }

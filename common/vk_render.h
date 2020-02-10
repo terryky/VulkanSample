@@ -9,7 +9,7 @@
 extern "C" {
 #endif
 
-int vk_render ();
+int vk_render (vk_t *vk, void (*cb_make_command)(VkCommandBuffer, void *), void *usr_data);
 
 #ifdef __cplusplus
 }
