@@ -94,6 +94,16 @@ typedef struct _vt_buffer_t
     VkDeviceMemory  mem;
 } vk_buffer_t;
 
+
+typedef struct _vt_texture_t
+{
+    VkImage         img;
+    VkDeviceMemory  mem;
+    VkImageView     view;
+    VkSampler       sampler;
+} vk_texture_t;
+
+    
 #ifdef __cplusplus
 }
 #endif

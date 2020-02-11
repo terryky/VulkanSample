@@ -522,22 +522,84 @@ vk_create_buffer (vk_t *vk, uint32_t size, VkBufferUsageFlags usage, void *psrc,
 
 
 int
-vk_create_sampler (vk_t *vk, VkSampler *samp)
+vk_create_texture (vk_t *vk, uint32_t width, uint32_t height, VkFormat format, vk_texture_t *vk_tex)
 {
-    VkSampler sampler;
+    VkImage         img;
+    VkDeviceMemory  mem;
+    VkImageView     view;
+    VkSampler       sampler;
 
-    VkSamplerCreateInfo ci = {0};
-    ci.sType         = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    ci.minFilter     = VK_FILTER_LINEAR;
-    ci.magFilter     = VK_FILTER_LINEAR;
-    ci.addressModeU  = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    ci.addressModeV  = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    ci.maxAnisotropy = 1.0f;
-    ci.borderColor   = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+    /* create VkImage */
+    {
+        VkImageCreateInfo ci = {0};
+        ci.sType            = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+        ci.extent.width     = width;
+        ci.extent.height    = height;
+        ci.extent.depth     = 1;
+        ci.format           = format;
+        ci.imageType        = VK_IMAGE_TYPE_2D;
+        ci.arrayLayers      = 1;
+        ci.mipLevels        = 1;
+        ci.samples          = VK_SAMPLE_COUNT_1_BIT;
+        ci.usage            = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
-    VK_CHECK (vkCreateSampler (vk->dev, &ci, NULL, &sampler));
+        VK_CHECK (vkCreateImage (vk->dev, &ci, NULL, &img));
+    }
 
-    *samp = sampler;
+    /* Allocate Memory for VkImage */
+    VkMemoryRequirements reqs;
+    vkGetImageMemoryRequirements (vk->dev, img, &reqs);
+
+    VkMemoryAllocateInfo ai = {0};
+    ai.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    ai.allocationSize  = reqs.size;
+    ai.memoryTypeIndex = getMemoryTypeIndex (reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    VK_CHECK (vkAllocateMemory (vk->dev, &ai, NULL, &mem));
+
+    /* bind */
+    VK_CHECK (vkBindImageMemory (vk->dev, img, mem, 0));
+
+    /* create VkImageView */
+    {
+        VkImageViewCreateInfo ci = {0};
+        ci.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+        ci.viewType         = VK_IMAGE_VIEW_TYPE_2D;
+        ci.image            = img;
+        ci.format           = format;
+        ci.components.r     = VK_COMPONENT_SWIZZLE_R;
+        ci.components.g     = VK_COMPONENT_SWIZZLE_G;
+        ci.components.b     = VK_COMPONENT_SWIZZLE_B;
+        ci.components.a     = VK_COMPONENT_SWIZZLE_A;
+        ci.subresourceRange.aspectMask      = VK_IMAGE_ASPECT_COLOR_BIT;
+        ci.subresourceRange.baseMipLevel    = 0;
+        ci.subresourceRange.levelCount      = 1;
+        ci.subresourceRange.baseArrayLayer  = 0;
+        ci.subresourceRange.layerCount      = 1;
+
+        VK_CHECK (vkCreateImageView (vk->dev, &ci, NULL, &view));
+    }
+
+    /* create VkSampler */
+    {
+        VkSamplerCreateInfo ci = {0};
+        ci.sType         = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+        ci.minFilter     = VK_FILTER_LINEAR;
+        ci.magFilter     = VK_FILTER_LINEAR;
+        ci.addressModeU  = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        ci.addressModeV  = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        ci.maxAnisotropy = 1.0f;
+        ci.borderColor   = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+
+        VK_CHECK (vkCreateSampler (vk->dev, &ci, NULL, &sampler));
+    }
+
+
+    vk_tex->img     = img;
+    vk_tex->mem     = mem;
+    vk_tex->view    = view;
+    vk_tex->sampler = sampler;
+
     return 0;
 }
 
