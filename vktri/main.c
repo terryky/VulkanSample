@@ -195,7 +195,9 @@ init_pipeline (vk_t *vk)
 static int
 init_scene (vk_t *vk)
 {
-    vk_create_buffer (vk, sizeof(vertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertices, &s_vtx_buf);
+    VkBufferUsageFlags    usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    VkMemoryPropertyFlags mflag = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+    vk_create_buffer (vk, sizeof(vertices), usage, mflag, vertices, &s_vtx_buf);
 
     init_pipeline (vk);
 

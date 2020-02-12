@@ -59,7 +59,7 @@ create_descriptor_pool (vk_t *vk)
 
     VkDescriptorPoolCreateInfo ci = {0};
     ci.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-    ci.maxSets       = 1 * sizeof(float);
+    ci.maxSets       = 3;
     ci.poolSizeCount = 1;
     ci.pPoolSizes    = descPoolSize;
 
@@ -201,7 +201,9 @@ create_texture (vk_t *vk, const char* fileName, vk_texture_t *ptexture)
     /* create staging buffer */
     vk_buffer_t staging_buf;
     uint32_t imageSize = width * height * sizeof(uint32_t);
-    vk_create_buffer (vk, imageSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, pImage, &staging_buf);
+    VkBufferUsageFlags    usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    VkMemoryPropertyFlags mflag = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+    vk_create_buffer (vk, imageSize, usage, mflag, pImage, &staging_buf);
 
 
     /* create Command buffer */
@@ -443,7 +445,9 @@ init_pipeline (vk_t *vk)
 static int
 init_scene (vk_t *vk)
 {
-    vk_create_buffer (vk, sizeof(vertices), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertices, &s_vtx_buf);
+    VkBufferUsageFlags    usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+    VkMemoryPropertyFlags mflag = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
+    vk_create_buffer (vk, sizeof(vertices), usage, mflag, vertices, &s_vtx_buf);
 
     create_texture (vk, "texture.tga", &s_texture);
 

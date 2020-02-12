@@ -480,7 +480,9 @@ vkin_create_semaphore ()
 }
 
 int
-vk_create_buffer (vk_t *vk, uint32_t size, VkBufferUsageFlags usage, void *psrc, vk_buffer_t *vk_buf)
+vk_create_buffer (vk_t *vk, uint32_t size,
+                  VkBufferUsageFlags usage, VkMemoryPropertyFlags mflags, 
+                  void *psrc, vk_buffer_t *vk_buf)
 {
     VkBuffer        buf;
     VkDeviceMemory  mem;
@@ -499,7 +501,7 @@ vk_create_buffer (vk_t *vk, uint32_t size, VkBufferUsageFlags usage, void *psrc,
     VkMemoryAllocateInfo ai = {0};
     ai.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     ai.allocationSize  = reqs.size;
-    ai.memoryTypeIndex = getMemoryTypeIndex (reqs.memoryTypeBits, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT);
+    ai.memoryTypeIndex = getMemoryTypeIndex (reqs.memoryTypeBits, mflags);
 
     VK_CHECK (vkAllocateMemory (vk->dev, &ai, NULL, &mem));
 
