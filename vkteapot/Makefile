@@ -4,6 +4,7 @@ TARGET = vkteapot
 
 SRCS = 
 SRCS += main.c
+SRCS += teapot.c
 SRCS += ../common/vk_init.c
 SRCS += ../common/vk_debug.c
 SRCS += ../common/vk_render.c

@@ -83,8 +83,9 @@ typedef struct _vk_t
     VkSemaphore                         sem_render_complete;
     VkSemaphore                         sem_present_complete;
 
+    /* for Render */
     uint32_t                            image_index;
-
+    void                                *user_data;
 } vk_t;
 
 

@@ -1,4 +1,4 @@
 #!/bin/sh
-glslangValidator shader.vert -V -S vert -o shader.vert.spv
-glslangValidator shader.frag -V -S frag -o shader.frag.spv
+glslangValidator teapot.vert -V -S vert -o teapot.vert.spv
+glslangValidator teapot.frag -V -S frag -o teapot.frag.spv
 
