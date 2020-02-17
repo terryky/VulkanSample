@@ -3901,7 +3901,7 @@ init_descriptor_set (vk_t *vk)
  * +------------------+-------------------------------------+-----------------------------------------+
  *
  */
-void 
+static void 
 setImageMemoryBarrier (VkCommandBuffer command, VkImage image,
                        VkImageLayout oldLayout, VkImageLayout newLayout)
 {
