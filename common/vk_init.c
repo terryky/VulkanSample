@@ -13,7 +13,7 @@
 #include "vk_winsys.h"
 
 
-vk_t vk = {0};
+static vk_t vk = {0};
 
 
 
@@ -37,6 +37,28 @@ vkin_create_instance (const char* app_name)
         VK_PRINT ("inst_ext[%2d/%2d] %s\n", i, inst_ext_num, inst_ext[i]);
     }
 
+    /* Layer properties */
+    uint32_t lyr_num;
+    VK_CHECK (vkEnumerateInstanceLayerProperties (&lyr_num, NULL));
+    VkLayerProperties *lyr_props = VK_CALLOC (VkLayerProperties, lyr_num);
+    VK_CHECK (vkEnumerateInstanceLayerProperties (&lyr_num, lyr_props));
+
+    inst_lyr = VK_CALLOC (const char *, lyr_num);
+    for (uint32_t i = 0; i < lyr_num; i ++)
+    {
+        char *lyr_name = lyr_props[i].layerName;
+        VK_PRINT ("inst_lyr[%2d/%2d] %s ", i, inst_lyr_num, lyr_name);
+
+        if (!strcmp(lyr_name, "VK_LAYER_KHRONOS_validation"))
+        {
+            VK_PRINT ("[ENABLED]");
+            inst_lyr[inst_lyr_num] = lyr_name;
+            inst_lyr_num ++;
+        }
+        VK_PRINT ("\n");
+    }
+
+
     VkApplicationInfo appInfo = {0};
     appInfo.sType            = VK_STRUCTURE_TYPE_APPLICATION_INFO;
     appInfo.pApplicationName = app_name;
@@ -52,12 +74,6 @@ vkin_create_instance (const char* app_name)
     ci.ppEnabledExtensionNames = inst_ext;
     ci.enabledLayerCount       = inst_lyr_num;
     ci.ppEnabledLayerNames     = inst_lyr;
-
-#if 0
-    const char* layers[] = { "VK_LAYER_LUNARG_standard_validation" };
-    ci.enabledLayerCount   = 1;
-    ci.ppEnabledLayerNames = layers;
-#endif
 
     VK_CHECK (vkCreateInstance (&ci, NULL, &vk.instance));
 
@@ -646,6 +662,188 @@ vk_load_shader_module (vk_t *vk, const char* fname, VkShaderModule *sm)
     *sm = shaderModule;
     return 0;
 }
+
+int
+vk_devmemcpy (vk_t *vk, VkDeviceMemory mem, void *psrc, uint32_t size)
+{
+    void *p;
+
+    VK_CHECK (vkMapMemory (vk->dev, mem, 0, size, 0, &p));
+    memcpy (p, psrc, size);
+    vkUnmapMemory (vk->dev, mem);
+
+    return 0;
+}
+
+/* ----------------------------------------------------------------------- *
+ *    Utility functions for Graphics Pipeline Createion
+ * ----------------------------------------------------------------------- */
+
+/* Primitive Type */
+int
+vk_get_default_input_assembly_state (vk_t *vk, VkPipelineInputAssemblyStateCreateInfo *state, 
+                                     VkPrimitiveTopology topology)
+{
+    state->sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    state->topology = topology;
+
+    return 0;
+}
+
+int
+vk_destroy_default_input_assembly_state (vk_t *vk, VkPipelineInputAssemblyStateCreateInfo *state)
+{
+    return 0;
+}
+
+
+/* Viewport, Scissor */
+int
+vk_get_default_viewport_state (vk_t *vk, VkPipelineViewportStateCreateInfo *state)
+{
+    VkViewport *viewport = VK_CALLOC (VkViewport, 1);
+    VkRect2D   *scissor  = VK_CALLOC (VkRect2D, 1);
+
+    viewport->x        = 0.0f;
+    viewport->y        = vk->swapchain_extent.height;
+    viewport->width    = vk->swapchain_extent.width;
+    viewport->height   = -1.0f * vk->swapchain_extent.height;
+    viewport->minDepth = 0.0f;
+    viewport->maxDepth = 1.0f;
+
+    scissor->offset.x  = 0;
+    scissor->offset.y  = 0;
+    scissor->extent    = vk->swapchain_extent;
+
+    state->sType         = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    state->viewportCount = 1;
+    state->pViewports    = viewport;
+    state->scissorCount  = 1;
+    state->pScissors     = scissor;
+
+    return 0;
+}
+
+int
+vk_destroy_default_viewport_state (vk_t *vk, VkPipelineViewportStateCreateInfo *state)
+{
+    VK_FREE (state->pViewports);
+    VK_FREE (state->pScissors);
+
+    return 0;
+}
+
+
+/* Rasterizer */
+int
+vk_get_default_rasterizer_state (vk_t *vk, VkPipelineRasterizationStateCreateInfo *state)
+{
+    state->sType       = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    state->polygonMode = VK_POLYGON_MODE_FILL;
+    state->cullMode    = VK_CULL_MODE_NONE;
+    state->frontFace   = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+    state->lineWidth   = 1.0f;
+
+    return 0;
+}
+
+int
+vk_destroy_default_rasterizer_state (vk_t *vk, VkPipelineRasterizationStateCreateInfo *state)
+{
+    return 0;
+}
+
+
+/* Multi Sample */
+int
+vk_get_default_multisample_state (vk_t *vk, VkPipelineMultisampleStateCreateInfo *state)
+{
+    state->sType                = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    state->rasterizationSamples = VK_SAMPLE_COUNT_1_BIT;
+
+    return 0;
+}
+
+int
+vk_destroy_default_multisample_state (vk_t *vk, VkPipelineMultisampleStateCreateInfo *state)
+{
+    return 0;
+}
+
+/* Depth, Stencil */
+int
+vk_get_default_depth_stencil_state (vk_t *vk, VkPipelineDepthStencilStateCreateInfo *state, 
+                                    int depth_en, int stencil_en)
+{
+    state->sType             = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    state->depthTestEnable   = VK_FALSE;
+    state->depthCompareOp    = VK_COMPARE_OP_ALWAYS;
+    state->depthWriteEnable  = VK_FALSE;
+    state->stencilTestEnable = VK_FALSE;
+
+    if (depth_en)
+    {
+        state->depthTestEnable  = VK_TRUE;
+        state->depthCompareOp   = VK_COMPARE_OP_LESS_OR_EQUAL;
+        state->depthWriteEnable = VK_TRUE;
+    }
+
+    if (stencil_en)
+    {
+        state->stencilTestEnable = VK_TRUE;
+    }
+
+    return 0;
+}
+
+int
+vk_destroy_default_depth_stencil_state (vk_t *vk, VkPipelineDepthStencilStateCreateInfo *state)
+{
+    return 0;
+}
+
+
+/* Blend */
+int
+vk_get_default_blend_state (vk_t *vk, VkPipelineColorBlendStateCreateInfo *state, int blend_en)
+{
+    VkPipelineColorBlendAttachmentState *ba = VK_CALLOC (VkPipelineColorBlendAttachmentState, 1);
+
+    ba->blendEnable         = VK_TRUE;
+    ba->srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+    ba->dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+    ba->srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+    ba->dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+    ba->colorBlendOp        = VK_BLEND_OP_ADD;
+    ba->alphaBlendOp        = VK_BLEND_OP_ADD;
+    ba->colorWriteMask      = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT |
+                              VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
+
+    if (blend_en)
+    {
+        ba->srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+        ba->dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+        ba->srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+        ba->dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+    }
+
+    state->sType            = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    state->attachmentCount  = 1;
+    state->pAttachments     = ba;
+
+    return 0;
+}
+
+int
+vk_destroy_default_blend_state (vk_t *vk, VkPipelineColorBlendStateCreateInfo *state)
+{
+    VK_FREE (state->pAttachments);
+    return 0;
+}
+
+
+
+
 
 
 vk_t *

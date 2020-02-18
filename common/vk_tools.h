@@ -27,6 +27,7 @@ extern "C" {
 }
 
 #define VK_CALLOC(type, count) ((type *)calloc(sizeof(type), count))
+#define VK_FREE(ptr) (free((void *)ptr))
 
 #define VK_GET_PROC_ADDR(inst, name)                                            \
 {                                                                               \
