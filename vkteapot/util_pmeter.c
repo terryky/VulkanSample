@@ -112,6 +112,18 @@ static float s_vtx_cursor[] =
 };
 
 
+/*
+ *  +--------------------------------------------+
+ *  |               Descriptor Set               |
+ *  +--------------------------+                 |
+ *  |  Descriptor Set Layout   |                 |
+ *  +---+----+-----------------+-----------------+
+ *  |set|bind|  type   | stage |    buffer       |
+ *  +---+----+-----------------+-----------------+
+ *  | 0 |  0 | UNIFORM | VERT  |s_ubo_vs         |
+ *  | 0 |  1 | UNIFORM | VERT  |s_ubo_vs_instance|
+ *  +---+----+-----------------+-----------------+
+ */
 static void 
 create_descriptor_set_layout (vk_t *vk)
 {
@@ -254,6 +266,11 @@ init_pipeline (vk_t *vk)
 
     /* ---------------------------------------------------- *
      *  Vertex Input Attributes
+     *  +---+----+-------------------+--------+------------------+--------+
+     *  |loc|bind|      stride       |  rate  |      format      | offset |
+     *  +---+----+-------------------+--------+------------------+--------+
+     *  | 0 |  0 | 2 * sizeof(float) | VERTEX | R32G32B32_SFLOAT |   0    |
+     *  +---+----+-------------------+--------+------------------+--------+
      * ---------------------------------------------------- */
     VkVertexInputBindingDescription inputBinding[1] = {0};
     inputBinding[0].binding    = 0;                         /* vbo[0] vtx */
@@ -274,100 +291,41 @@ init_pipeline (vk_t *vk)
     vertexInputCI.pVertexAttributeDescriptions    = inputAttribs;
 
 
-    /* ---------------------------------------------------- *
-     *  Primitive Type
-     * ---------------------------------------------------- */
+    /* Primitive Type */
     VkPipelineInputAssemblyStateCreateInfo inputAssemblyCI = {0};
-    inputAssemblyCI.sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssemblyCI.topology = VK_PRIMITIVE_TOPOLOGY_LINE_STRIP  ;
+    vk_get_default_input_assembly_state (vk, &inputAssemblyCI, VK_PRIMITIVE_TOPOLOGY_LINE_STRIP);
 
-
-    /* ---------------------------------------------------- *
-     *  Viewport, Scissor
-     * ---------------------------------------------------- */
-    VkViewport viewport = {0};
-    viewport.x          = 0.0f;
-    viewport.y          = vk->swapchain_extent.height;
-    viewport.width      = vk->swapchain_extent.width;
-    viewport.height     = -1.0f * vk->swapchain_extent.height;
-    viewport.minDepth   = 0.0f;
-    viewport.maxDepth   = 1.0f;
-
-    VkRect2D scissor = {0};
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    scissor.extent   = vk->swapchain_extent;
-
+    /* Viewport, Scissor */
     VkPipelineViewportStateCreateInfo viewportCI = {0};
-    viewportCI.sType            = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    viewportCI.viewportCount    = 1;
-    viewportCI.pViewports       = &viewport;
-    viewportCI.scissorCount     = 1;
-    viewportCI.pScissors        = &scissor;
+    vk_get_default_viewport_state (vk, &viewportCI);
 
-
-    /* ---------------------------------------------------- *
-     *  Rasterizer
-     * ---------------------------------------------------- */
+    /* Rasterizer */
     VkPipelineRasterizationStateCreateInfo rasterizerCI = {0};
-    rasterizerCI.sType          = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rasterizerCI.polygonMode    = VK_POLYGON_MODE_FILL;
-    rasterizerCI.cullMode       = VK_CULL_MODE_NONE;
-    rasterizerCI.frontFace      = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    rasterizerCI.lineWidth      = 1.0f;
+    vk_get_default_rasterizer_state (vk, &rasterizerCI);
 
-
-    /* ---------------------------------------------------- *
-     *  Multi Sample
-     * ---------------------------------------------------- */
+    /* Multi Sample */
     VkPipelineMultisampleStateCreateInfo multisampleCI = {0};
-    multisampleCI.sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisampleCI.rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT;
+    vk_get_default_multisample_state (vk, &multisampleCI);
 
-
-    /* ---------------------------------------------------- *
-     *  Depth test, Stencil test
-     * ---------------------------------------------------- */
+    /* Depth test, Stencil test */
     VkPipelineDepthStencilStateCreateInfo depthStencilCI = {0};
-    depthStencilCI.sType                = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    depthStencilCI.depthTestEnable      = VK_FALSE;
-    depthStencilCI.depthCompareOp       = VK_COMPARE_OP_ALWAYS;
-    depthStencilCI.depthWriteEnable     = VK_FALSE;
-    depthStencilCI.stencilTestEnable    = VK_FALSE;
+    int depth_en   = 0;
+    int stencil_en = 0;
+    vk_get_default_depth_stencil_state (vk, &depthStencilCI, depth_en, stencil_en);
 
-
-    /* ---------------------------------------------------- *
-     *  Blend
-     * ---------------------------------------------------- */
-    const VkColorComponentFlagBits colorWriteAll = 
-            VK_COLOR_COMPONENT_R_BIT |
-            VK_COLOR_COMPONENT_G_BIT |
-            VK_COLOR_COMPONENT_B_BIT |
-            VK_COLOR_COMPONENT_A_BIT;
-
-    VkPipelineColorBlendAttachmentState blendAttachment = {0};
-    blendAttachment.blendEnable         = VK_TRUE;
-    blendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-    blendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
-    blendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    blendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-    blendAttachment.colorBlendOp        = VK_BLEND_OP_ADD;
-    blendAttachment.alphaBlendOp        = VK_BLEND_OP_ADD;
-    blendAttachment.colorWriteMask      = colorWriteAll;
-
-    VkPipelineColorBlendStateCreateInfo cbCI = {0};
-    cbCI.sType              = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    cbCI.attachmentCount    = 1;
-    cbCI.pAttachments       = &blendAttachment;
+    /* Blend */
+    VkPipelineColorBlendStateCreateInfo cblendCI = {0};
+    int blend_en = 0;
+    vk_get_default_blend_state (vk, &cblendCI, blend_en);
 
 
     /* ---------------------------------------------------- *
      *  Pipeline Layout
      * ---------------------------------------------------- */
     VkPipelineLayoutCreateInfo pipelineLayoutCI = {0};
-    pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutCI.sType          = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutCI.setLayoutCount = 1;
-    pipelineLayoutCI.pSetLayouts = &s_descriptorSetLayout;
+    pipelineLayoutCI.pSetLayouts    = &s_descriptorSetLayout;
     VK_CHECK (vkCreatePipelineLayout (vk->dev, &pipelineLayoutCI, NULL, &s_pipelineLayout));
 
 
@@ -383,16 +341,26 @@ init_pipeline (vk_t *vk)
     ci.pDepthStencilState   = &depthStencilCI;
     ci.pMultisampleState    = &multisampleCI;
     ci.pViewportState       = &viewportCI;
-    ci.pColorBlendState     = &cbCI;
+    ci.pColorBlendState     = &cblendCI;
     ci.renderPass           = vk->render_pass;
     ci.layout               = s_pipelineLayout;
 
     VK_CHECK (vkCreateGraphicsPipelines (vk->dev, VK_NULL_HANDLE, 1, &ci, NULL, &s_pipeline));
 
+
+    /* --------------------- *
+     *  clean up resources
+     * --------------------- */
     for (uint32_t i = 0; i < ARRAY_LENGTH (shaderStages); i ++)
     {
         vkDestroyShaderModule (vk->dev, shaderStages[i].module, NULL);
     }
+
+    vk_destroy_default_viewport_state (vk, &viewportCI);
+    vk_destroy_default_rasterizer_state (vk, &rasterizerCI);
+    vk_destroy_default_multisample_state (vk, &multisampleCI);
+    vk_destroy_default_depth_stencil_state (vk, &depthStencilCI);
+    vk_destroy_default_blend_state (vk, &cblendCI);
 
     return 0;
 }
@@ -419,12 +387,11 @@ init_pmeter (vk_t *vk, int win_w, int win_h, int data_num)
     s_wndW = win_w;
     s_wndH = win_h;
     s_data_num = data_num;
+    s_vtx_axis[3] = (float)data_num;
 
 
     VkBufferUsageFlags    usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     VkMemoryPropertyFlags mflag = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-
-    s_vtx_axis[3] = (float)data_num;
     vk_create_buffer (vk, sizeof(s_vtx_axis),   usage, mflag, s_vtx_axis,   &s_vtx_axis_buf);
     vk_create_buffer (vk, sizeof(s_vtx_cursor), usage, mflag, s_vtx_cursor, &s_vtx_cursor_buf);
     vk_create_buffer (vk, sizeof(s_vertPM),     usage, mflag, s_vertPM,     &s_vtx_graph_buf);
@@ -466,7 +433,7 @@ draw_pmeter_ex (vk_t *vk, int dpy_id, int x, int y, float scale)
     int   draw_cnt_graph = 0;
     int   draw_cnt_cursor = 0;
     int   draw_cnt = 0;
-    
+
     pmeter_get_laptime (dpy_id, &num_time, &laptime);
 
     sumval = 0;
@@ -491,6 +458,9 @@ draw_pmeter_ex (vk_t *vk, int dpy_id, int x, int y, float scale)
     if (s_pm_idx[dpy_id] >= s_data_num)
         s_pm_idx[dpy_id] = 0;
 
+    /* ----------------------------------------------------------------------- *
+     *    Vulkan Render
+     * ----------------------------------------------------------------------- */
     VkCommandBuffer command = vk->cmd_bufs[vk->image_index];
     vkCmdBindPipeline (command, VK_PIPELINE_BIND_POINT_GRAPHICS, s_pipeline);
 
@@ -510,19 +480,14 @@ draw_pmeter_ex (vk_t *vk, int dpy_id, int x, int y, float scale)
     ubo_vs.PrjAdd[2] =  1.0f;
     ubo_vs.PrjAdd[3] =  1.0f;
 
-    {
-        VkDeviceMemory mem = s_ubo_vs[vk->image_index].mem;
-        void *p;
-        VK_CHECK (vkMapMemory (vk->dev, mem, 0, VK_WHOLE_SIZE, 0, &p));
-        memcpy (p, &ubo_vs, sizeof(ubo_vs));
-        vkUnmapMemory (vk->dev, mem);
-    }
+    /* Upload UBO */
+    vk_devmemcpy (vk, s_ubo_vs[vk->image_index].mem, &ubo_vs, sizeof(ubo_vs));
 
     /* ------------------------- *
      *  update Instance UBO
      * ------------------------- */
 
-    /* axis */
+    /* axis (instance_id: 0-9) */
     draw_cnt_axis = 10;
     for (i = 0; i < draw_cnt_axis; i ++)
     {
@@ -534,7 +499,7 @@ draw_pmeter_ex (vk_t *vk, int dpy_id, int x, int y, float scale)
         draw_cnt ++;
     }
 
-    /* graph */
+    /* graph (instance_id: 10) */
     draw_cnt_graph = 1;
     for (i = 0; i < draw_cnt_graph; i ++)
     {
@@ -546,7 +511,7 @@ draw_pmeter_ex (vk_t *vk, int dpy_id, int x, int y, float scale)
         draw_cnt ++;
     }
 
-    /* cursor */
+    /* cursor (instance_id: 11) */
     draw_cnt_cursor = 1;
     for (i = 0; i < draw_cnt_cursor; i ++)
     {
@@ -558,28 +523,16 @@ draw_pmeter_ex (vk_t *vk, int dpy_id, int x, int y, float scale)
         draw_cnt ++;
     }
 
-    /* update Uniform Buffer of Vertex Shader Instance */
-    {
-        VkDeviceMemory mem = s_ubo_vs_instance[vk->image_index].mem;
-        void *p;
-        VK_CHECK (vkMapMemory (vk->dev, mem, 0, VK_WHOLE_SIZE, 0, &p));
-        memcpy (p, s_vs_instance, sizeof(s_vs_instance[0]) * draw_cnt);
-        vkUnmapMemory (vk->dev, mem);
-    }
-
+    /* upload Instance UBO */
+    vk_devmemcpy (vk, s_ubo_vs_instance[vk->image_index].mem, 
+                    s_vs_instance, sizeof(s_vs_instance[0]) * draw_cnt);
 
     /* ------------------------- *
-     *  update Vertex buffer
+     *  Upload Vertex buffer
      * ------------------------- */
 
     /* graph */
-    {
-        VkDeviceMemory mem = s_vtx_graph_buf.mem;
-        void *p;
-        VK_CHECK (vkMapMemory (vk->dev, mem, 0, VK_WHOLE_SIZE, 0, &p));
-        memcpy (p, s_vertPM[dpy_id][3], sizeof(float) * 2 * s_data_num);
-        vkUnmapMemory (vk->dev, mem);
-    }
+    vk_devmemcpy (vk, s_vtx_graph_buf.mem, s_vertPM[dpy_id][3], sizeof(float) * 2 * s_data_num);
 
     /* ------------------------------------ *
      *  Bind Vertex buffer and Draw
@@ -587,19 +540,19 @@ draw_pmeter_ex (vk_t *vk, int dpy_id, int x, int y, float scale)
     VkBuffer     buffer[1] = {0};
     VkDeviceSize offset[1] = {0};
     int first_instance = 0;
-    
-    /* axis */
+
+    /* axis  (instance_id: 0-9) */
     buffer[0] = s_vtx_axis_buf.buf;
     vkCmdBindVertexBuffers (command, 0, 1, buffer, offset);
     vkCmdDraw (command, 2, draw_cnt_axis, 0, first_instance);
 
-    /* graph */
+    /* graph (instance_id: 10) */
     buffer[0] = s_vtx_graph_buf.buf;
     first_instance += draw_cnt_axis;
     vkCmdBindVertexBuffers (command, 0, 1, buffer, offset);
     vkCmdDraw (command, s_data_num, draw_cnt_graph, 0, first_instance);
 
-    /* cursor */
+    /* cursor (instance_id: 11) */
     buffer[0] = s_vtx_cursor_buf.buf;
     first_instance += draw_cnt_graph;
     vkCmdBindVertexBuffers (command, 0, 1, buffer, offset);

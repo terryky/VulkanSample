@@ -80,6 +80,19 @@ static float s_uv0[] =
 };
 
 
+/*
+ *  +--------------------------------------------+
+ *  |               Descriptor Set               |
+ *  +--------------------------+                 |
+ *  |  Descriptor Set Layout   |                 |
+ *  +---+----+-----------------+-----------------+
+ *  |set|bind|  type   | stage |    buffer       |
+ *  +---+----+-----------------+-----------------+
+ *  | 0 |  0 | UNIFORM | VERT  |s_ubo_vs         |
+ *  | 0 |  1 | UNIFORM | VERT  |s_ubo_vs_instance|
+ *  | 0 |  5 | SAMPLER | FRAG  |s_texture        |
+ *  +---+----+-----------------+-----------------+
+ */
 static void 
 create_descriptor_set_layout (vk_t *vk)
 {
@@ -396,6 +409,12 @@ init_pipeline (vk_t *vk)
 
     /* ---------------------------------------------------- *
      *  Vertex Input Attributes
+     *  +---+----+-------------------+--------+------------------+--------+
+     *  |loc|bind|      stride       |  rate  |      format      | offset |
+     *  +---+----+-------------------+--------+------------------+--------+
+     *  | 0 |  0 | 2 * sizeof(float) | VERTEX | R32G32B32_SFLOAT |   0    |
+     *  | 1 |  1 | 2 * sizeof(float) | VERTEX | R32G32B32_SFLOAT |   0    |
+     *  +---+----+-------------------+--------+------------------+--------+
      * ---------------------------------------------------- */
     VkVertexInputBindingDescription inputBinding[2] = {0};
     inputBinding[0].binding    = 0;                         /* vbo[0] vtx */
@@ -423,100 +442,41 @@ init_pipeline (vk_t *vk)
     vertexInputCI.pVertexAttributeDescriptions    = inputAttribs;
 
 
-    /* ---------------------------------------------------- *
-     *  Primitive Type
-     * ---------------------------------------------------- */
+    /* Primitive Type */
     VkPipelineInputAssemblyStateCreateInfo inputAssemblyCI = {0};
-    inputAssemblyCI.sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssemblyCI.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP ;
+    vk_get_default_input_assembly_state (vk, &inputAssemblyCI, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 
-
-    /* ---------------------------------------------------- *
-     *  Viewport, Scissor
-     * ---------------------------------------------------- */
-    VkViewport viewport = {0};
-    viewport.x          = 0.0f;
-    viewport.y          = vk->swapchain_extent.height;
-    viewport.width      = vk->swapchain_extent.width;
-    viewport.height     = -1.0f * vk->swapchain_extent.height;
-    viewport.minDepth   = 0.0f;
-    viewport.maxDepth   = 1.0f;
-
-    VkRect2D scissor = {0};
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    scissor.extent   = vk->swapchain_extent;
-
+    /* Viewport, Scissor */
     VkPipelineViewportStateCreateInfo viewportCI = {0};
-    viewportCI.sType            = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    viewportCI.viewportCount    = 1;
-    viewportCI.pViewports       = &viewport;
-    viewportCI.scissorCount     = 1;
-    viewportCI.pScissors        = &scissor;
+    vk_get_default_viewport_state (vk, &viewportCI);
 
-
-    /* ---------------------------------------------------- *
-     *  Rasterizer
-     * ---------------------------------------------------- */
+    /* Rasterizer */
     VkPipelineRasterizationStateCreateInfo rasterizerCI = {0};
-    rasterizerCI.sType          = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rasterizerCI.polygonMode    = VK_POLYGON_MODE_FILL;
-    rasterizerCI.cullMode       = VK_CULL_MODE_NONE;
-    rasterizerCI.frontFace      = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    rasterizerCI.lineWidth      = 1.0f;
+    vk_get_default_rasterizer_state (vk, &rasterizerCI);
 
-
-    /* ---------------------------------------------------- *
-     *  Multi Sample
-     * ---------------------------------------------------- */
+    /* Multi Sample */
     VkPipelineMultisampleStateCreateInfo multisampleCI = {0};
-    multisampleCI.sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisampleCI.rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT;
+    vk_get_default_multisample_state (vk, &multisampleCI);
 
-
-    /* ---------------------------------------------------- *
-     *  Depth test, Stencil test
-     * ---------------------------------------------------- */
+    /* Depth test, Stencil test */
     VkPipelineDepthStencilStateCreateInfo depthStencilCI = {0};
-    depthStencilCI.sType                = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    depthStencilCI.depthTestEnable      = VK_FALSE;
-    depthStencilCI.depthCompareOp       = VK_COMPARE_OP_ALWAYS;
-    depthStencilCI.depthWriteEnable     = VK_FALSE;
-    depthStencilCI.stencilTestEnable    = VK_FALSE;
+    int depth_en   = 0;
+    int stencil_en = 0;
+    vk_get_default_depth_stencil_state (vk, &depthStencilCI, depth_en, stencil_en);
 
-
-    /* ---------------------------------------------------- *
-     *  Blend
-     * ---------------------------------------------------- */
-    const VkColorComponentFlagBits colorWriteAll = 
-            VK_COLOR_COMPONENT_R_BIT |
-            VK_COLOR_COMPONENT_G_BIT |
-            VK_COLOR_COMPONENT_B_BIT |
-            VK_COLOR_COMPONENT_A_BIT;
-
-    VkPipelineColorBlendAttachmentState blendAttachment = {0};
-    blendAttachment.blendEnable         = VK_TRUE;
-    blendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-    blendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-    blendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    blendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-    blendAttachment.colorBlendOp        = VK_BLEND_OP_ADD;
-    blendAttachment.alphaBlendOp        = VK_BLEND_OP_ADD;
-    blendAttachment.colorWriteMask      = colorWriteAll;
-
-    VkPipelineColorBlendStateCreateInfo cbCI = {0};
-    cbCI.sType              = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    cbCI.attachmentCount    = 1;
-    cbCI.pAttachments       = &blendAttachment;
+    /* Blend */
+    VkPipelineColorBlendStateCreateInfo cblendCI = {0};
+    int blend_en = 1;
+    vk_get_default_blend_state (vk, &cblendCI, blend_en);
 
 
     /* ---------------------------------------------------- *
      *  Pipeline Layout
      * ---------------------------------------------------- */
     VkPipelineLayoutCreateInfo pipelineLayoutCI = {0};
-    pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutCI.sType          = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutCI.setLayoutCount = 1;
-    pipelineLayoutCI.pSetLayouts = &s_descriptorSetLayout;
+    pipelineLayoutCI.pSetLayouts    = &s_descriptorSetLayout;
     VK_CHECK (vkCreatePipelineLayout (vk->dev, &pipelineLayoutCI, NULL, &s_pipelineLayout));
 
 
@@ -532,16 +492,26 @@ init_pipeline (vk_t *vk)
     ci.pDepthStencilState   = &depthStencilCI;
     ci.pMultisampleState    = &multisampleCI;
     ci.pViewportState       = &viewportCI;
-    ci.pColorBlendState     = &cbCI;
+    ci.pColorBlendState     = &cblendCI;
     ci.renderPass           = vk->render_pass;
     ci.layout               = s_pipelineLayout;
 
     VK_CHECK (vkCreateGraphicsPipelines (vk->dev, VK_NULL_HANDLE, 1, &ci, NULL, &s_pipeline));
 
+
+    /* --------------------- *
+     *  clean up resources
+     * --------------------- */
     for (uint32_t i = 0; i < ARRAY_LENGTH (shaderStages); i ++)
     {
         vkDestroyShaderModule (vk->dev, shaderStages[i].module, NULL);
     }
+
+    vk_destroy_default_viewport_state (vk, &viewportCI);
+    vk_destroy_default_rasterizer_state (vk, &rasterizerCI);
+    vk_destroy_default_multisample_state (vk, &multisampleCI);
+    vk_destroy_default_depth_stencil_state (vk, &depthStencilCI);
+    vk_destroy_default_blend_state (vk, &cblendCI);
 
     return 0;
 }
@@ -550,6 +520,8 @@ init_pipeline (vk_t *vk)
 int
 init_dbgstr (vk_t *vk, int win_w, int win_h)
 {
+    s_wndW = win_w;
+    s_wndH = win_h;
     VkBufferUsageFlags    usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     VkMemoryPropertyFlags mflag = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
     vk_create_buffer (vk, sizeof(s_vtx), usage, mflag, s_vtx, &s_vtx_buf);
@@ -564,9 +536,6 @@ init_dbgstr (vk_t *vk, int win_w, int win_h)
     init_descriptor_set (vk);
 
     init_pipeline (vk);
-
-    s_wndW = win_w;
-    s_wndH = win_h;
 
     return 0;
 }
@@ -640,19 +609,18 @@ end_dbgstr (vk_t *vk)
     if (s_draw_cnt <= 0)
         return 0;
 
+    /* ----------------------------------------------------------------------- *
+     *    Vulkan Render
+     * ----------------------------------------------------------------------- */
     VkCommandBuffer command = vk->cmd_bufs[vk->image_index];
     vkCmdBindPipeline (command, VK_PIPELINE_BIND_POINT_GRAPHICS, s_pipeline);
 
     vkCmdBindDescriptorSets (command, VK_PIPELINE_BIND_POINT_GRAPHICS, s_pipelineLayout, 0, 1, 
                              &s_descriptorSet[vk->image_index], 0, NULL);
 
-    VkBuffer     buffer[2] = {0};
-    VkDeviceSize offset[2] = {0};
-
-    buffer[0] = s_vtx_buf.buf;
-    buffer[1] = s_uv0_buf.buf;
-    vkCmdBindVertexBuffers (command, 0, 2, buffer,  offset);
-
+    /* ------------------------- *
+     *  update UBO
+     * ------------------------- */
     ubo_vs_t ubo_vs = {0};
     ubo_vs.PrjMul[0] =  2.0f / s_wndW;
     ubo_vs.PrjMul[1] = -2.0f / s_wndH;
@@ -663,23 +631,26 @@ end_dbgstr (vk_t *vk)
     ubo_vs.PrjAdd[2] =  1.0f;
     ubo_vs.PrjAdd[3] =  1.0f;
 
-    /* update Uniform Buffer of Vertex Shader */
-    {
-        VkDeviceMemory mem = s_ubo_vs[vk->image_index].mem;
-        void *p;
-        VK_CHECK (vkMapMemory (vk->dev, mem, 0, VK_WHOLE_SIZE, 0, &p));
-        memcpy (p, &ubo_vs, sizeof(ubo_vs));
-        vkUnmapMemory (vk->dev, mem);
-    }
+    /* Upload UBO */
+    vk_devmemcpy (vk, s_ubo_vs[vk->image_index].mem, &ubo_vs, sizeof(ubo_vs));
 
-    /* update Uniform Buffer of Vertex Shader Instance */
-    {
-        VkDeviceMemory mem = s_ubo_vs_instance[vk->image_index].mem;
-        void *p;
-        VK_CHECK (vkMapMemory (vk->dev, mem, 0, VK_WHOLE_SIZE, 0, &p));
-        memcpy (p, s_vs_instance, sizeof(s_vs_instance[0]) * s_draw_cnt);
-        vkUnmapMemory (vk->dev, mem);
-    }
+    /* ------------------------- *
+     *  update Instance UBO
+     * ------------------------- */
+
+    /* upload Instance UBO */
+    vk_devmemcpy (vk, s_ubo_vs_instance[vk->image_index].mem, 
+                    s_vs_instance, sizeof(s_vs_instance[0]) * s_draw_cnt);
+
+    /* ------------------------------------ *
+     *  Bind Vertex buffer and Draw
+     * ------------------------------------ */
+    VkBuffer     buffer[2] = {0};
+    VkDeviceSize offset[2] = {0};
+
+    buffer[0] = s_vtx_buf.buf;
+    buffer[1] = s_uv0_buf.buf;
+    vkCmdBindVertexBuffers (command, 0, 2, buffer,  offset);
 
     vkCmdDraw (command, 4, s_draw_cnt, 0, 0);
 
