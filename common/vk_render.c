@@ -11,45 +11,48 @@
 
 
 int
-vk_render (vk_t *vk, void (*cb_make_command)(VkCommandBuffer, void *), void *usr_data)
+vk_render (vk_t *vk, uint32_t flags, void (*cb_make_command)(VkCommandBuffer, void *), void *usr_data)
 {
     uint32_t nextImageIndex = 0;
     VK_CHECK (vkAcquireNextImageKHR (vk->dev, vk->swapchain, UINT64_MAX, 
                            vk->sem_present_complete, VK_NULL_HANDLE, &nextImageIndex));
 
-    VkFence cmd_fence = vk->fences[nextImageIndex];
+    VkCommandBuffer command   = vk->cmd_bufs[nextImageIndex];
+    VkFence         cmd_fence = vk->fences[nextImageIndex];
+
     VK_CHECK (vkWaitForFences (vk->dev, 1, &cmd_fence, VK_TRUE, UINT64_MAX));
 
-    /* Clear */
-    VkClearValue clear_val[2];
-    clear_val[0].color.float32[0] = 0.25f;
-    clear_val[0].color.float32[1] = 0.25f;
-    clear_val[0].color.float32[2] = 0.25f;
-    clear_val[0].color.float32[3] = 1.00f;
-    clear_val[1].depthStencil.depth   = 1.0f;
-    clear_val[1].depthStencil.stencil = 0;
-
-    VkRenderPassBeginInfo renderPassBI = {0};
-    renderPassBI.sType              = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
-    renderPassBI.renderPass         = vk->render_pass;
-    renderPassBI.framebuffer        = vk->framebuffers[nextImageIndex];
-    renderPassBI.renderArea.offset.x= 0;
-    renderPassBI.renderArea.offset.y= 0;
-    renderPassBI.renderArea.extent  = vk->swapchain_extent;
-    renderPassBI.clearValueCount    = 2;
-    renderPassBI.pClearValues       = clear_val;
-
-    /* Begin Command buffer, Render pass */
+    /* Begin Command buffer */
     VkCommandBufferBeginInfo commandBI = {0};
     commandBI.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-    VkCommandBuffer command = vk->cmd_bufs[nextImageIndex];
     VK_CHECK (vkBeginCommandBuffer (command, &commandBI));
-
-    vkCmdBeginRenderPass (command, &renderPassBI, VK_SUBPASS_CONTENTS_INLINE);
 
     vk->image_index = nextImageIndex;
 
+    /* if use default RenderPass, begin it. */
+    if (!flags)
+    {
+        /* Clear */
+        VkClearValue clear_val[2];
+        clear_val[0].color.float32[0] = 0.25f;
+        clear_val[0].color.float32[1] = 0.25f;
+        clear_val[0].color.float32[2] = 0.25f;
+        clear_val[0].color.float32[3] = 1.00f;
+        clear_val[1].depthStencil.depth   = 1.0f;
+        clear_val[1].depthStencil.stencil = 0;
+
+        VkRenderPassBeginInfo renderPassBI = {0};
+        renderPassBI.sType              = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+        renderPassBI.renderPass         = vk->render_pass;
+        renderPassBI.framebuffer        = vk->framebuffers[nextImageIndex];
+        renderPassBI.renderArea.offset.x= 0;
+        renderPassBI.renderArea.offset.y= 0;
+        renderPassBI.renderArea.extent  = vk->swapchain_extent;
+        renderPassBI.clearValueCount    = 2;
+        renderPassBI.pClearValues       = clear_val;
+
+        vkCmdBeginRenderPass (command, &renderPassBI, VK_SUBPASS_CONTENTS_INLINE);
+    }
 
     /* ------------------------------------------- *
      *  Callback to make render commands
@@ -60,10 +63,14 @@ vk_render (vk_t *vk, void (*cb_make_command)(VkCommandBuffer, void *), void *usr
     }
 
 
-    /* End Command buffer, Render pass */
-    vkCmdEndRenderPass (command);
-    vkEndCommandBuffer (command);
+    /* if use default RenderPass, end it. */
+    if (!flags)
+    {
+        vkCmdEndRenderPass (command);
+    }
 
+    /* End Command buffer */
+    vkEndCommandBuffer (command);
 
     /* Submit command */
     VkSubmitInfo submitInfo = {0};

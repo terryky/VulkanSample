@@ -651,6 +651,6 @@ main (int argc, char *argv[])
 
     while (1)
     {
-        vk_render (vk, cb_make_command, vk);
+        vk_render (vk, 0, cb_make_command, vk);
     }
 }

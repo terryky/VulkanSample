@@ -257,7 +257,7 @@ vkin_create_swap_chain (int win_w, int win_h)
 }
 
 
-static uint32_t
+uint32_t
 getMemoryTypeIndex (uint32_t requestBits, VkMemoryPropertyFlags requestProps)
 {
     uint32_t result = ~0u;

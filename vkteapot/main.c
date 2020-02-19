@@ -75,7 +75,7 @@ main(int argc, char *argv[])
     {
         rparam.count = count;
 
-        vk_render (vk, cb_make_command, vk);
+        vk_render (vk, 0, cb_make_command, vk);
     }
 
     return 0;

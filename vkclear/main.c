@@ -15,9 +15,9 @@ int
 main (int argc, char *argv[])
 {
     vk_t *vk = vk_init (960, 540);
- 
+
     while (1)
     {
-        vk_render (vk, NULL, NULL);
+        vk_render (vk, 0, NULL, NULL);
     }
 }
