@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <vulkan/vulkan.h>
 #include "vk_tools.h"
+#include "vk_init.h"
 #include "vk_render_target.h"
 
 
@@ -95,7 +96,7 @@ create_rtarget_color (vk_t *vk, vk_texture_t *vk_tex, uint32_t width, uint32_t h
     VkMemoryAllocateInfo ai = {0};
     ai.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     ai.allocationSize  = reqs.size;
-    ai.memoryTypeIndex = getMemoryTypeIndex (reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    ai.memoryTypeIndex = vk_get_memory_type_index (reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     VK_CHECK (vkAllocateMemory (vk->dev, &ai, NULL, &mem));
     VK_CHECK (vkBindImageMemory (vk->dev, img, mem, 0));
@@ -171,7 +172,7 @@ create_rtarget_depth (vk_t *vk, vk_texture_t *depth, uint32_t width, uint32_t he
     VkMemoryAllocateInfo ai = {0};
     ai.sType            = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     ai.allocationSize   = reqs.size;
-    ai.memoryTypeIndex  = getMemoryTypeIndex (reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    ai.memoryTypeIndex  = vk_get_memory_type_index (reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     VK_CHECK (vkAllocateMemory  (vk->dev, &ai, NULL, &mem));
     VK_CHECK (vkBindImageMemory (vk->dev, img, mem, 0));
@@ -212,13 +213,13 @@ create_rtarget_frame_buffer (vk_t *vk, VkFramebuffer *fb, uint32_t width, uint32
     attachments[1] = depth_tgt.view;
 
     VkFramebufferCreateInfo ci = {0};
-    ci.sType        = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-    ci.renderPass   = render_pass;
+    ci.sType           = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+    ci.renderPass      = render_pass;
     ci.attachmentCount = 2;
     ci.pAttachments    = attachments;
-    ci.width        = width;
-    ci.height       = height;
-    ci.layers       = 1;
+    ci.width           = width;
+    ci.height          = height;
+    ci.layers          = 1;
 
     VK_CHECK (vkCreateFramebuffer (vk->dev, &ci, NULL, fb));
 

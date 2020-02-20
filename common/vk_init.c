@@ -193,6 +193,7 @@ vkin_create_surface (VkFormat format)
 {
     vk.surface = vkin_winsys_create_surface (vk.instance);
 
+    /* available format */
     uint32_t count = 0;
     VK_CHECK (vkGetPhysicalDeviceSurfaceFormatsKHR (vk.phydev, vk.surface, &count, NULL));
     VkSurfaceFormatKHR *formats = VK_CALLOC (VkSurfaceFormatKHR, count);
@@ -207,8 +208,10 @@ vkin_create_surface (VkFormat format)
         }
     }
 
+    /* capabilities */
     VK_CHECK (vkGetPhysicalDeviceSurfaceCapabilitiesKHR (vk.phydev, vk.surface, &vk.sfc_caps));
 
+    /* This queue family supports presentation to the surface ? */
     VkBool32 is_support;
     VK_CHECK (vkGetPhysicalDeviceSurfaceSupportKHR (vk.phydev, vk.qidx_graphics, vk.surface, &is_support));
     if (is_support == false)
@@ -222,7 +225,7 @@ vkin_create_surface (VkFormat format)
 
 
 static int
-vkin_create_swap_chain (int win_w, int win_h)
+vkin_create_swap_chain (int win_w, int win_h, VkPresentModeKHR present_mode)
 {
     VkExtent2D extent = vk.sfc_caps.currentExtent;
     if (extent.width == ~0u)
@@ -232,6 +235,31 @@ vkin_create_swap_chain (int win_w, int win_h)
     }
 
     uint32_t imgCount = vk.sfc_caps.minImageCount;
+
+    /* available present mode */
+    uint32_t count = 0;
+    VK_CHECK (vkGetPhysicalDeviceSurfacePresentModesKHR (vk.phydev, vk.surface, &count, NULL));
+    VkPresentModeKHR *present_modes = VK_CALLOC (VkPresentModeKHR, count);
+    VK_CHECK (vkGetPhysicalDeviceSurfacePresentModesKHR (vk.phydev, vk.surface, &count, present_modes));
+
+    int found = 0;
+    for (uint32_t i = 0; i < count; i ++)
+    {
+        if (present_modes[i] == present_mode )
+        {
+            found = 1;
+            break;
+        }
+    }
+    if (found == 0)
+    {
+        VK_LOGE ("This surface doesn't support the indicated present mode.(%d)", present_mode);
+        return -1;
+    }
+
+#if 0 /* force disable VSYNC */
+    present_mode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+#endif
 
     VkSwapchainCreateInfoKHR ci = {0};
     ci.sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -245,7 +273,7 @@ vkin_create_swap_chain (int win_w, int win_h)
     ci.imageArrayLayers = 1;
     ci.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     ci.queueFamilyIndexCount = 0;
-    ci.presentMode      = VK_PRESENT_MODE_FIFO_KHR;
+    ci.presentMode      = present_mode;
     ci.oldSwapchain     = VK_NULL_HANDLE;
     ci.clipped          = VK_TRUE;
     ci.compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
@@ -257,66 +285,10 @@ vkin_create_swap_chain (int win_w, int win_h)
 }
 
 
-uint32_t
-getMemoryTypeIndex (uint32_t requestBits, VkMemoryPropertyFlags requestProps)
-{
-    uint32_t result = ~0u;
-    for (uint32_t i = 0; i < vk.phymem_props.memoryTypeCount; i++)
-    {
-        if (requestBits & 1)
-        {
-            VkMemoryType memtype = vk.phymem_props.memoryTypes[i];
-            if ((memtype.propertyFlags & requestProps) == requestProps)
-            {
-                result = i;
-                break;
-            }
-        }
-        requestBits >>= 1;
-    }
-    return result;
-}
-
 static int
-vkin_create_depth_buffer ()
+vkin_create_swap_chain_views ()
 {
-    VkImageCreateInfo ci = {0};
-    ci.sType            = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    ci.imageType        = VK_IMAGE_TYPE_2D;
-    ci.format           = VK_FORMAT_D32_SFLOAT;
-    ci.extent.width     = vk.swapchain_extent.width;
-    ci.extent.height    = vk.swapchain_extent.height;
-    ci.extent.depth     = 1;
-    ci.mipLevels        = 1;
-    ci.usage            = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    ci.samples          = VK_SAMPLE_COUNT_1_BIT;
-    ci.arrayLayers      = 1;
-
-    VK_CHECK (vkCreateImage (vk.dev, &ci, NULL, &vk.dbuf));
-
-
-    /* Allocate memory for Depth Buffer */
-    VkMemoryRequirements reqs;
-    vkGetImageMemoryRequirements (vk.dev, vk.dbuf, &reqs);
-
-    VkMemoryAllocateInfo ai = {0};
-    ai.sType            = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    ai.allocationSize   = reqs.size;
-    ai.memoryTypeIndex  = getMemoryTypeIndex (reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    VK_CHECK (vkAllocateMemory  (vk.dev, &ai, NULL, &vk.dbuf_mem));
-
-
-    /* bind */
-    VK_CHECK (vkBindImageMemory (vk.dev, vk.dbuf, vk.dbuf_mem, 0));
-
-    return 0;
-}
-
-
-static int
-vkin_create_views ()
-{
+    /* Get "Image" for Color Buffer */
     uint32_t imageCount;
     VK_CHECK (vkGetSwapchainImagesKHR (vk.dev, vk.swapchain, &imageCount, NULL));
     vk.swapchain_imgs = VK_CALLOC (VkImage, imageCount);
@@ -324,7 +296,7 @@ vkin_create_views ()
 
     vk.swapchain_views = VK_CALLOC (VkImageView, imageCount);
 
-    // color buffer
+    /* Create "ImageView" for Color Buffer */
     for (uint32_t i = 0; i < imageCount; ++i)
     {
         VkImageViewCreateInfo ci = {0};
@@ -345,25 +317,82 @@ vkin_create_views ()
         VK_CHECK (vkCreateImageView (vk.dev, &ci, NULL, &vk.swapchain_views[i]));
     }
 
-    // depth buffer
-    {
-        VkImageViewCreateInfo ci = {0};
-        ci.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        ci.viewType         = VK_IMAGE_VIEW_TYPE_2D;
-        ci.format           = VK_FORMAT_D32_SFLOAT;
-        ci.components.r     = VK_COMPONENT_SWIZZLE_R;
-        ci.components.g     = VK_COMPONENT_SWIZZLE_G;
-        ci.components.b     = VK_COMPONENT_SWIZZLE_B;
-        ci.components.a     = VK_COMPONENT_SWIZZLE_A;
-        ci.image            = vk.dbuf;
-        ci.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT;
-        ci.subresourceRange.baseMipLevel   = 0;
-        ci.subresourceRange.levelCount     = 1;
-        ci.subresourceRange.baseArrayLayer = 0;
-        ci.subresourceRange.layerCount     = 1;
+    return 0;
+}
 
-        VK_CHECK (vkCreateImageView (vk.dev, &ci, NULL, &vk.dbuf_view));
+
+uint32_t
+vk_get_memory_type_index (uint32_t requestBits, VkMemoryPropertyFlags requestProps)
+{
+    uint32_t result = ~0u;
+    for (uint32_t i = 0; i < vk.phymem_props.memoryTypeCount; i++)
+    {
+        if (requestBits & 1)
+        {
+            VkMemoryType memtype = vk.phymem_props.memoryTypes[i];
+            if ((memtype.propertyFlags & requestProps) == requestProps)
+            {
+                result = i;
+                break;
+            }
+        }
+        requestBits >>= 1;
     }
+    return result;
+}
+
+
+static int
+vkin_create_depth_buffer ()
+{
+    /* Create "Image" for Depth Buffer */
+    VkImageCreateInfo ci = {0};
+    ci.sType            = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    ci.imageType        = VK_IMAGE_TYPE_2D;
+    ci.format           = VK_FORMAT_D32_SFLOAT;
+    ci.extent.width     = vk.swapchain_extent.width;
+    ci.extent.height    = vk.swapchain_extent.height;
+    ci.extent.depth     = 1;
+    ci.mipLevels        = 1;
+    ci.arrayLayers      = 1;
+    ci.samples          = VK_SAMPLE_COUNT_1_BIT;
+    ci.usage            = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+    ci.sharingMode      = VK_SHARING_MODE_EXCLUSIVE;
+    ci.initialLayout    = VK_IMAGE_LAYOUT_UNDEFINED;
+
+    VK_CHECK (vkCreateImage (vk.dev, &ci, NULL, &vk.dbuf));
+
+
+    /* Allocate memory for Depth Buffer */
+    VkMemoryRequirements reqs;
+    vkGetImageMemoryRequirements (vk.dev, vk.dbuf, &reqs);
+
+    VkMemoryAllocateInfo ai = {0};
+    ai.sType            = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    ai.allocationSize   = reqs.size;
+    ai.memoryTypeIndex  = vk_get_memory_type_index (reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+
+    VK_CHECK (vkAllocateMemory  (vk.dev, &ai, NULL, &vk.dbuf_mem));
+    VK_CHECK (vkBindImageMemory (vk.dev, vk.dbuf, vk.dbuf_mem, 0));
+
+
+    /* Create "ImageView" for Depth */
+    VkImageViewCreateInfo vci = {0};
+    vci.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    vci.viewType         = VK_IMAGE_VIEW_TYPE_2D;
+    vci.image            = vk.dbuf;
+    vci.format           = VK_FORMAT_D32_SFLOAT;
+    vci.components.r     = VK_COMPONENT_SWIZZLE_R;
+    vci.components.g     = VK_COMPONENT_SWIZZLE_G;
+    vci.components.b     = VK_COMPONENT_SWIZZLE_B;
+    vci.components.a     = VK_COMPONENT_SWIZZLE_A;
+    vci.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_DEPTH_BIT;
+    vci.subresourceRange.baseMipLevel   = 0;
+    vci.subresourceRange.levelCount     = 1;
+    vci.subresourceRange.baseArrayLayer = 0;
+    vci.subresourceRange.layerCount     = 1;
+
+    VK_CHECK (vkCreateImageView (vk.dev, &vci, NULL, &vk.dbuf_view));
 
     return 0;
 }
@@ -517,7 +546,7 @@ vk_create_buffer (vk_t *vk, uint32_t size,
     VkMemoryAllocateInfo ai = {0};
     ai.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     ai.allocationSize  = reqs.size;
-    ai.memoryTypeIndex = getMemoryTypeIndex (reqs.memoryTypeBits, mflags);
+    ai.memoryTypeIndex = vk_get_memory_type_index (reqs.memoryTypeBits, mflags);
 
     VK_CHECK (vkAllocateMemory (vk->dev, &ai, NULL, &mem));
 
@@ -548,21 +577,22 @@ vk_create_texture (vk_t *vk, uint32_t width, uint32_t height, VkFormat format, v
     VkSampler       sampler;
 
     /* create VkImage */
-    {
-        VkImageCreateInfo ci = {0};
-        ci.sType            = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-        ci.extent.width     = width;
-        ci.extent.height    = height;
-        ci.extent.depth     = 1;
-        ci.format           = format;
-        ci.imageType        = VK_IMAGE_TYPE_2D;
-        ci.arrayLayers      = 1;
-        ci.mipLevels        = 1;
-        ci.samples          = VK_SAMPLE_COUNT_1_BIT;
-        ci.usage            = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    VkImageCreateInfo ici = {0};
+    ici.sType           = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+    ici.imageType       = VK_IMAGE_TYPE_2D;
+    ici.format          = format;
+    ici.extent.width    = width;
+    ici.extent.height   = height;
+    ici.extent.depth    = 1;
+    ici.arrayLayers     = 1;
+    ici.mipLevels       = 1;
+    ici.samples         = VK_SAMPLE_COUNT_1_BIT;
+    ici.tiling          = VK_IMAGE_TILING_OPTIMAL;
+    ici.usage           = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+    ici.sharingMode     = VK_SHARING_MODE_EXCLUSIVE;
+    ici.initialLayout   = VK_IMAGE_LAYOUT_UNDEFINED;
 
-        VK_CHECK (vkCreateImage (vk->dev, &ci, NULL, &img));
-    }
+    VK_CHECK (vkCreateImage (vk->dev, &ici, NULL, &img));
 
     /* Allocate Memory for VkImage */
     VkMemoryRequirements reqs;
@@ -571,46 +601,40 @@ vk_create_texture (vk_t *vk, uint32_t width, uint32_t height, VkFormat format, v
     VkMemoryAllocateInfo ai = {0};
     ai.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     ai.allocationSize  = reqs.size;
-    ai.memoryTypeIndex = getMemoryTypeIndex (reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    ai.memoryTypeIndex = vk_get_memory_type_index (reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
 
     VK_CHECK (vkAllocateMemory (vk->dev, &ai, NULL, &mem));
-
-    /* bind */
     VK_CHECK (vkBindImageMemory (vk->dev, img, mem, 0));
 
     /* create VkImageView */
-    {
-        VkImageViewCreateInfo ci = {0};
-        ci.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-        ci.viewType         = VK_IMAGE_VIEW_TYPE_2D;
-        ci.image            = img;
-        ci.format           = format;
-        ci.components.r     = VK_COMPONENT_SWIZZLE_R;
-        ci.components.g     = VK_COMPONENT_SWIZZLE_G;
-        ci.components.b     = VK_COMPONENT_SWIZZLE_B;
-        ci.components.a     = VK_COMPONENT_SWIZZLE_A;
-        ci.subresourceRange.aspectMask      = VK_IMAGE_ASPECT_COLOR_BIT;
-        ci.subresourceRange.baseMipLevel    = 0;
-        ci.subresourceRange.levelCount      = 1;
-        ci.subresourceRange.baseArrayLayer  = 0;
-        ci.subresourceRange.layerCount      = 1;
+    VkImageViewCreateInfo vci = {0};
+    vci.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+    vci.viewType         = VK_IMAGE_VIEW_TYPE_2D;
+    vci.image            = img;
+    vci.format           = format;
+    vci.components.r     = VK_COMPONENT_SWIZZLE_R;
+    vci.components.g     = VK_COMPONENT_SWIZZLE_G;
+    vci.components.b     = VK_COMPONENT_SWIZZLE_B;
+    vci.components.a     = VK_COMPONENT_SWIZZLE_A;
+    vci.subresourceRange.aspectMask      = VK_IMAGE_ASPECT_COLOR_BIT;
+    vci.subresourceRange.baseMipLevel    = 0;
+    vci.subresourceRange.levelCount      = 1;
+    vci.subresourceRange.baseArrayLayer  = 0;
+    vci.subresourceRange.layerCount      = 1;
 
-        VK_CHECK (vkCreateImageView (vk->dev, &ci, NULL, &view));
-    }
+    VK_CHECK (vkCreateImageView (vk->dev, &vci, NULL, &view));
 
     /* create VkSampler */
-    {
-        VkSamplerCreateInfo ci = {0};
-        ci.sType         = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-        ci.minFilter     = VK_FILTER_LINEAR;
-        ci.magFilter     = VK_FILTER_LINEAR;
-        ci.addressModeU  = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        ci.addressModeV  = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        ci.maxAnisotropy = 1.0f;
-        ci.borderColor   = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
+    VkSamplerCreateInfo sci = {0};
+    sci.sType         = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+    sci.minFilter     = VK_FILTER_LINEAR;
+    sci.magFilter     = VK_FILTER_LINEAR;
+    sci.addressModeU  = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sci.addressModeV  = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+    sci.maxAnisotropy = 1.0f;
+    sci.borderColor   = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
 
-        VK_CHECK (vkCreateSampler (vk->dev, &ci, NULL, &sampler));
-    }
+    VK_CHECK (vkCreateSampler (vk->dev, &sci, NULL, &sampler));
 
 
     vk_tex->img     = img;
@@ -865,11 +889,11 @@ vk_init (int win_w, int win_h)
 
     vkin_create_surface (VK_FORMAT_B8G8R8A8_UNORM);
 
-    vkin_create_swap_chain (win_w, win_h);
+    vkin_create_swap_chain (win_w, win_h, VK_PRESENT_MODE_FIFO_KHR);
+
+    vkin_create_swap_chain_views ();
 
     vkin_create_depth_buffer ();
-
-    vkin_create_views ();
 
     vkin_create_render_pass ();
 
