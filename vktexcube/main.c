@@ -20,15 +20,24 @@ static VkDescriptorPool         s_descriptorPool;
 static VkDescriptorSet          s_descriptorSet[3];
 static VkPipelineLayout         s_pipelineLayout;
 
+static VkPipeline               s_pipeline;
+
 static vk_buffer_t              s_vtx_buf;
 static vk_buffer_t              s_nrm_buf;
 static vk_buffer_t              s_uv_buf;
 static vk_texture_t             s_texture;
-static VkPipeline               s_pipeline;
 
-static vk_buffer_t              m_ubo[3];
+static vk_buffer_t              s_ubo_vs[3];
 
 static float s_matPrj[16];
+
+typedef struct _ubo_vs_t
+{
+    float matPMV[16];
+    float matMV [16];
+    float matMVI[16];   /* mat3 requires same alignment as mat4 */
+} ubo_vs_t;
+
 
 static float s_vtx[] =
 {
@@ -89,26 +98,32 @@ static float s_uv [] =
 };
 
 
-typedef struct ShaderParameters
-{
-    float matPMV   [16];
-    float matMV    [16];
-    float matMVI3x3[ 9];
-} ShaderParameters;
 
 
+/*
+ *  +--------------------------------------------+
+ *  |               Descriptor Set               |
+ *  +--------------------------+                 |
+ *  |  Descriptor Set Layout   |                 |
+ *  +---+----+-----------------+-----------------+
+ *  |set|bind|  type   | stage |    buffer       |
+ *  +---+----+-----------------+-----------------+
+ *  | 0 |  0 | UNIFORM | VERT  |s_ubo_vs         |
+ *  | 0 |  1 | SAMPLER | FRAG  |s_texture        |
+ *  +---+----+-----------------+-----------------+
+ */
 static void 
 create_descriptor_set_layout (vk_t *vk)
 {
     VkDescriptorSetLayoutBinding bindings[2] = {0};
 
-    /* binding for UBO */
+    /* binding for Vertex Shader UBO */
     bindings[0].binding         = 0;
     bindings[0].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     bindings[0].stageFlags      = VK_SHADER_STAGE_VERTEX_BIT;
     bindings[0].descriptorCount = 1;
 
-    /* binding for Sampler */
+    /* binding for Fragment Shader Sampler */
     bindings[1].binding         = 1;
     bindings[1].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
     bindings[1].stageFlags      = VK_SHADER_STAGE_FRAGMENT_BIT;
@@ -164,30 +179,30 @@ init_descriptor_set (vk_t *vk)
     {
         VkWriteDescriptorSet writeSets[2] = {0};
 
-        /* UBO */
-        VkDescriptorBufferInfo descUBO = {0};
-        descUBO.buffer      = m_ubo[i].buf;
-        descUBO.offset      = 0;
-        descUBO.range       = VK_WHOLE_SIZE;
+        /* Vertex Shader UBO */
+        VkDescriptorBufferInfo desc_ubo_vs = {0};
+        desc_ubo_vs.buffer           = s_ubo_vs[i].buf;
+        desc_ubo_vs.offset           = 0;
+        desc_ubo_vs.range            = VK_WHOLE_SIZE;
 
         writeSets[0].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writeSets[0].dstBinding      = 0;
         writeSets[0].descriptorCount = 1;
         writeSets[0].descriptorType  = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-        writeSets[0].pBufferInfo     = &descUBO;
+        writeSets[0].pBufferInfo     = &desc_ubo_vs;
         writeSets[0].dstSet          = s_descriptorSet[i];
 
-        /* texture sampler */
-        VkDescriptorImageInfo descImage = {0};
-        descImage.imageView   = s_texture.view;
-        descImage.sampler     = s_texture.sampler;
-        descImage.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        /* Fragment Shader Sampler */
+        VkDescriptorImageInfo desc_img_fs = {0};
+        desc_img_fs.imageView        = s_texture.view;
+        desc_img_fs.sampler          = s_texture.sampler;
+        desc_img_fs.imageLayout      = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
         writeSets[1].sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
         writeSets[1].dstBinding      = 1;
         writeSets[1].descriptorCount = 1;
         writeSets[1].descriptorType  = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-        writeSets[1].pImageInfo      = &descImage;
+        writeSets[1].pImageInfo      = &desc_img_fs;
         writeSets[1].dstSet          = s_descriptorSet[i];
 
         vkUpdateDescriptorSets (vk->dev, ARRAY_LENGTH(writeSets), writeSets, 0, NULL);
@@ -196,21 +211,27 @@ init_descriptor_set (vk_t *vk)
 
 
 /*
+ * [Before Copy]
+ * +----------------------+--------------------------+--------------------------+
+ * |                      |           old      ===>  |  ===>     new            |
+ * +----------------------+--------------------------+--------------------------+
+ * |Pipeline stage barrier| ALL_COMMANDS             | TRANSFER                 |
+ * +--------+-------------+--------------------------+--------------------------+
+ * | Image  | Access      | 0                        | TRANSFER_WRITE           |
+ * | Memory | Layout      | UNDEFINED                | TRANSFER_DST_OPTIMAL     |
+ * | Barrier| QueueFamily | IGNORED                  | IGNORED                  |
+ * +--------+-------------+--------------------------+--------------------------+
  *
- * +------------------+-------------------------------------+-----------------------------------------+
- * | oldLayout        |   VK_IMAGE_LAYOUT_UNDEFINED         | VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL    |
- * +------------------+-------------------------------------+-----------------------------------------+
- * | imb.srcAccessMask|               0                     | VK_ACCESS_TRANSFER_WRITE_BIT            |
- * | srcSgage         |   VK_PIPELINE_STAGE_ALL_COMMANDS_BIT| VK_PIPELINE_STAGE_TRANSFER_BIT          |
- * +------------------+-------------------------------------+-----------------------------------------+
- *
- * +------------------+-------------------------------------+-----------------------------------------+
- * |newLayout         | VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL| VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL|
- * +------------------+-------------------------------------+-----------------------------------------+
- * | imb.dstAccessMask|   VK_ACCESS_TRANSFER_WRITE_BIT      |  VK_ACCESS_SHADER_READ_BIT              |
- * | dstSgage         |   VK_PIPELINE_STAGE_TRANSFER_BIT    |  VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT  |
- * +------------------+-------------------------------------+-----------------------------------------+
- *
+ * [After Copy]
+ * +----------------------+--------------------------+--------------------------+
+ * |                      |           old      ===>  |  ===>     new            |
+ * +----------------------+--------------------------+--------------------------+
+ * |Pipeline stage barrier| TRANSFER                 | FRAGMENT_SHADER          |
+ * +--------+-------------+--------------------------+--------------------------+
+ * | Image  | Access      | TRANSFER_WRITE           | SHADER_READ              |
+ * | Memory | Layout      | TRANSFER_DST_OPTIMAL     | SHADER_READ_ONLY_OPTIMAL |
+ * | Barrier| QueueFamily | IGNORED                  | IGNORED                  |
+ * +--------+-------------+--------------------------+--------------------------+
  */
 void 
 setImageMemoryBarrier (VkCommandBuffer command, VkImage image,
@@ -357,9 +378,9 @@ create_ubo (vk_t *vk)
 
     for (uint32_t i = 0; i < 3; i ++)
     {
-        vk_create_buffer (vk, sizeof(ShaderParameters), 
+        vk_create_buffer (vk, sizeof(ubo_vs_t), 
                           VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, uboFlags,
-                          NULL, &m_ubo[i]);
+                          NULL, &s_ubo_vs[i]);
     }
     return 0;
 }
@@ -389,6 +410,13 @@ init_pipeline (vk_t *vk)
 
     /* ---------------------------------------------------- *
      *  Vertex Input Attributes
+     *  +---+----+-------------------+--------+------------------+--------+
+     *  |loc|bind|      stride       |  rate  |      format      | offset |
+     *  +---+----+-------------------+--------+------------------+--------+
+     *  | 0 |  0 | 3 * sizeof(float) | VERTEX | R32G32B32_SFLOAT |   0    |
+     *  | 1 |  1 | 0                 | VERTEX | R32G32B32_SFLOAT |   0    |
+     *  | 2 |  2 | 2 * sizeof(float) | VERTEX | R32G32B32_SFLOAT |   0    |
+     *  +---+----+-------------------+--------+------------------+--------+
      * ---------------------------------------------------- */
     VkVertexInputBindingDescription inputBinding[3] = {0};
     inputBinding[0].binding    = 0;                         /* vbo[0] vtx */
@@ -423,100 +451,41 @@ init_pipeline (vk_t *vk)
     vertexInputCI.pVertexAttributeDescriptions    = inputAttribs;
 
 
-    /* ---------------------------------------------------- *
-     *  Primitive Type
-     * ---------------------------------------------------- */
+    /* Primitive Type */
     VkPipelineInputAssemblyStateCreateInfo inputAssemblyCI = {0};
-    inputAssemblyCI.sType    = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
-    inputAssemblyCI.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP ;
+    vk_get_default_input_assembly_state (vk, &inputAssemblyCI, VK_PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP);
 
-
-    /* ---------------------------------------------------- *
-     *  Viewport, Scissor
-     * ---------------------------------------------------- */
-    VkViewport viewport = {0};
-    viewport.x          = 0.0f;
-    viewport.y          = vk->swapchain_extent.height;
-    viewport.width      = vk->swapchain_extent.width;
-    viewport.height     = -1.0f * vk->swapchain_extent.height;
-    viewport.minDepth   = 0.0f;
-    viewport.maxDepth   = 1.0f;
-
-    VkRect2D scissor = {0};
-    scissor.offset.x = 0;
-    scissor.offset.y = 0;
-    scissor.extent   = vk->swapchain_extent;
-
+    /* Viewport, Scissor */
     VkPipelineViewportStateCreateInfo viewportCI = {0};
-    viewportCI.sType            = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
-    viewportCI.viewportCount    = 1;
-    viewportCI.pViewports       = &viewport;
-    viewportCI.scissorCount     = 1;
-    viewportCI.pScissors        = &scissor;
+    vk_get_default_viewport_state (vk, &viewportCI);
 
-
-    /* ---------------------------------------------------- *
-     *  Rasterizer
-     * ---------------------------------------------------- */
+    /* Rasterizer */
     VkPipelineRasterizationStateCreateInfo rasterizerCI = {0};
-    rasterizerCI.sType          = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
-    rasterizerCI.polygonMode    = VK_POLYGON_MODE_FILL;
-    rasterizerCI.cullMode       = VK_CULL_MODE_NONE;
-    rasterizerCI.frontFace      = VK_FRONT_FACE_COUNTER_CLOCKWISE;
-    rasterizerCI.lineWidth      = 1.0f;
+    vk_get_default_rasterizer_state (vk, &rasterizerCI);
 
-
-    /* ---------------------------------------------------- *
-     *  Multi Sample
-     * ---------------------------------------------------- */
+    /* Multi Sample */
     VkPipelineMultisampleStateCreateInfo multisampleCI = {0};
-    multisampleCI.sType                 = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
-    multisampleCI.rasterizationSamples  = VK_SAMPLE_COUNT_1_BIT;
+    vk_get_default_multisample_state (vk, &multisampleCI);
 
-
-    /* ---------------------------------------------------- *
-     *  Depth test, Stencil test
-     * ---------------------------------------------------- */
+    /* Depth test, Stencil test */
     VkPipelineDepthStencilStateCreateInfo depthStencilCI = {0};
-    depthStencilCI.sType                = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
-    depthStencilCI.depthTestEnable      = VK_TRUE;
-    depthStencilCI.depthCompareOp       = VK_COMPARE_OP_LESS_OR_EQUAL;
-    depthStencilCI.depthWriteEnable     = VK_TRUE;
-    depthStencilCI.stencilTestEnable    = VK_FALSE;
+    int depth_en   = 1;
+    int stencil_en = 0;
+    vk_get_default_depth_stencil_state (vk, &depthStencilCI, depth_en, stencil_en);
 
-
-    /* ---------------------------------------------------- *
-     *  Blend
-     * ---------------------------------------------------- */
-    const VkColorComponentFlagBits colorWriteAll = 
-            VK_COLOR_COMPONENT_R_BIT |
-            VK_COLOR_COMPONENT_G_BIT |
-            VK_COLOR_COMPONENT_B_BIT |
-            VK_COLOR_COMPONENT_A_BIT;
-
-    VkPipelineColorBlendAttachmentState blendAttachment = {0};
-    blendAttachment.blendEnable         = VK_TRUE;
-    blendAttachment.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
-    blendAttachment.dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
-    blendAttachment.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-    blendAttachment.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-    blendAttachment.colorBlendOp        = VK_BLEND_OP_ADD;
-    blendAttachment.alphaBlendOp        = VK_BLEND_OP_ADD;
-    blendAttachment.colorWriteMask      = colorWriteAll;
-
-    VkPipelineColorBlendStateCreateInfo cbCI = {0};
-    cbCI.sType              = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
-    cbCI.attachmentCount    = 1;
-    cbCI.pAttachments       = &blendAttachment;
+    /* Blend */
+    VkPipelineColorBlendStateCreateInfo cblendCI = {0};
+    int blend_en = 0;
+    vk_get_default_blend_state (vk, &cblendCI, blend_en);
 
 
     /* ---------------------------------------------------- *
      *  Pipeline Layout
      * ---------------------------------------------------- */
     VkPipelineLayoutCreateInfo pipelineLayoutCI = {0};
-    pipelineLayoutCI.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    pipelineLayoutCI.sType          = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
     pipelineLayoutCI.setLayoutCount = 1;
-    pipelineLayoutCI.pSetLayouts = &s_descriptorSetLayout;
+    pipelineLayoutCI.pSetLayouts    = &s_descriptorSetLayout;
     VK_CHECK (vkCreatePipelineLayout (vk->dev, &pipelineLayoutCI, NULL, &s_pipelineLayout));
 
 
@@ -532,23 +501,33 @@ init_pipeline (vk_t *vk)
     ci.pDepthStencilState   = &depthStencilCI;
     ci.pMultisampleState    = &multisampleCI;
     ci.pViewportState       = &viewportCI;
-    ci.pColorBlendState     = &cbCI;
+    ci.pColorBlendState     = &cblendCI;
     ci.renderPass           = vk->render_pass;
     ci.layout               = s_pipelineLayout;
 
     VK_CHECK (vkCreateGraphicsPipelines (vk->dev, VK_NULL_HANDLE, 1, &ci, NULL, &s_pipeline));
 
+
+    /* --------------------- *
+     *  clean up resources
+     * --------------------- */
     for (uint32_t i = 0; i < ARRAY_LENGTH (shaderStages); i ++)
     {
         vkDestroyShaderModule (vk->dev, shaderStages[i].module, NULL);
     }
+
+    vk_destroy_default_viewport_state (vk, &viewportCI);
+    vk_destroy_default_rasterizer_state (vk, &rasterizerCI);
+    vk_destroy_default_multisample_state (vk, &multisampleCI);
+    vk_destroy_default_depth_stencil_state (vk, &depthStencilCI);
+    vk_destroy_default_blend_state (vk, &cblendCI);
 
     return 0;
 }
 
 
 static int
-init_scene (vk_t *vk, int win_w, int win_h)
+init_texcube (vk_t *vk, int win_w, int win_h)
 {
     VkBufferUsageFlags    usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
     VkMemoryPropertyFlags mflag = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
@@ -571,62 +550,51 @@ init_scene (vk_t *vk, int win_w, int win_h)
     return 0;
 }
 
-static void
-update_scene (vk_t *vk)
-{
-    float matMV[16], matPMV[16], matMVI4x4[16], matMVI3x3[9];
-    static int count = 0;
 
-    count ++;
+static void
+draw_texcube (vk_t *vk, int count)
+{
+    float matMV[16], matPMV[16], matMVI[16];
+
     matrix_identity (matMV);
     matrix_translate (matMV, 0.0f, 0.0f, -3.5f);
     matrix_rotate (matMV, 30.0f * sinf (count*0.01f), 1.0f, 0.0f, 0.0f);
     matrix_rotate (matMV, count*1.0f, 0.0f, 1.0f, 0.0f);
 
-    matrix_copy (matMVI4x4, matMV);
-    matrix_invert   (matMVI4x4);
-    matrix_transpose(matMVI4x4);
-    matMVI3x3[0] = matMVI4x4[0];
-    matMVI3x3[1] = matMVI4x4[1];
-    matMVI3x3[2] = matMVI4x4[2];
-    matMVI3x3[3] = matMVI4x4[4];
-    matMVI3x3[4] = matMVI4x4[5];
-    matMVI3x3[5] = matMVI4x4[6];
-    matMVI3x3[6] = matMVI4x4[8];
-    matMVI3x3[7] = matMVI4x4[9];
-    matMVI3x3[8] = matMVI4x4[10];
+    matrix_copy (matMVI, matMV);
+    matrix_invert   (matMVI);
+    matrix_transpose(matMVI);
 
     matrix_mult (matPMV, s_matPrj, matMV);
 
-    /* update Uniform Buffer */
-    ShaderParameters shaderParam = {0};
-    memcpy (shaderParam.matPMV,    matPMV,    sizeof (matPMV   ));
-    memcpy (shaderParam.matMV,     matMV,     sizeof (matMV    ));
-    memcpy (shaderParam.matMVI3x3, matMVI3x3, sizeof (matMVI3x3));
-
-    VkDeviceMemory mem = m_ubo[vk->image_index].mem;
-    void *p;
-    vkMapMemory (vk->dev, mem, 0, VK_WHOLE_SIZE, 0, &p);
-    memcpy (p, &shaderParam, sizeof(shaderParam));
-    vkUnmapMemory (vk->dev, mem);
-}
-
-static void
-cb_make_command (VkCommandBuffer command, void *usr_data)
-{
-    vk_t *vk = (vk_t *)usr_data;
-
-    update_scene (vk);
-
+    /* ----------------------------------------------------------------------- *
+     *    Vulkan Render
+     * ----------------------------------------------------------------------- */
+    VkCommandBuffer command = vk->cmd_bufs[vk->image_index];
     vkCmdBindPipeline (command, VK_PIPELINE_BIND_POINT_GRAPHICS, s_pipeline);
 
     vkCmdBindDescriptorSets (command, VK_PIPELINE_BIND_POINT_GRAPHICS, s_pipelineLayout, 0, 1, 
                              &s_descriptorSet[vk->image_index], 0, NULL);
 
+    /* ------------------------- *
+     *  update UBO
+     * ------------------------- */
+    ubo_vs_t ubo_vs = {0};
+    memcpy (ubo_vs.matPMV, matPMV, sizeof (matPMV));
+    memcpy (ubo_vs.matMV,  matMV,  sizeof (matMV ));
+    memcpy (ubo_vs.matMVI, matMVI, sizeof (matMVI));
+
+    /* Upload UBO */
+    vk_devmemcpy (vk, s_ubo_vs[vk->image_index].mem, &ubo_vs, sizeof(ubo_vs));
+
+
+    /* ------------------------------------ *
+     *  Bind Vertex buffer and Draw
+     * ------------------------------------ */
     for (uint32_t i = 0; i < 6; i ++)
     {
-        VkBuffer     buffer[3];
-        VkDeviceSize offset[3];
+        VkBuffer     buffer[3] = {0};
+        VkDeviceSize offset[3] = {0};
 
         buffer[0] = s_vtx_buf.buf;
         offset[0] = 4 * 3 * i * sizeof(float);
@@ -635,10 +603,22 @@ cb_make_command (VkCommandBuffer command, void *usr_data)
         buffer[2] = s_uv_buf.buf;
         offset[2] = 0;
 
-        vkCmdBindVertexBuffers (command, 0, 3, buffer,  offset);
+        vkCmdBindVertexBuffers (command, 0, 3, buffer, offset);
 
         vkCmdDraw (command, 4, 1, 0, 0);
     }
+}
+
+
+static void
+cb_make_command (VkCommandBuffer command, void *usr_data)
+{
+    vk_t *vk = (vk_t *)usr_data;
+    static int count = 0;
+
+    draw_texcube (vk, count);
+
+    count ++;
 }
 
 
@@ -647,7 +627,7 @@ main (int argc, char *argv[])
 {
     vk_t *vk = vk_init (960, 540);
 
-    init_scene (vk, 960, 540);
+    init_texcube (vk, 960, 540);
 
     while (1)
     {

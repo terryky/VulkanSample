@@ -11,7 +11,7 @@ layout(binding=0) uniform Matrices
 {
     mat4 u_PMVMatrix;
     mat4 u_MVMatrix;
-    mat3 u_ModelViewIT;
+    mat4 u_ModelViewIT; /* mat3 requires same alignment as mat4 */
 };
 
 const float shiness      = 16.0;
@@ -39,7 +39,7 @@ void DirectionalLight (vec3 normal, vec3 eyePos)
 void main()
 {
     gl_Position = u_PMVMatrix * inPos;
-    vec3 normal = normalize(u_ModelViewIT * inNormal);
+    vec3 normal = normalize(mat3(u_ModelViewIT) * inNormal);
     vec3 eyePos = vec3(u_MVMatrix * inPos);
 
     outDiffuse  = LightAmbient;
