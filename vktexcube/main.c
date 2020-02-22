@@ -210,162 +210,18 @@ init_descriptor_set (vk_t *vk)
 }
 
 
-/*
- * [Before Copy]
- * +----------------------+--------------------------+--------------------------+
- * |                      |           old      ===>  |  ===>     new            |
- * +----------------------+--------------------------+--------------------------+
- * |Pipeline stage barrier| ALL_COMMANDS             | TRANSFER                 |
- * +--------+-------------+--------------------------+--------------------------+
- * | Image  | Access      | 0                        | TRANSFER_WRITE           |
- * | Memory | Layout      | UNDEFINED                | TRANSFER_DST_OPTIMAL     |
- * | Barrier| QueueFamily | IGNORED                  | IGNORED                  |
- * +--------+-------------+--------------------------+--------------------------+
- *
- * [After Copy]
- * +----------------------+--------------------------+--------------------------+
- * |                      |           old      ===>  |  ===>     new            |
- * +----------------------+--------------------------+--------------------------+
- * |Pipeline stage barrier| TRANSFER                 | FRAGMENT_SHADER          |
- * +--------+-------------+--------------------------+--------------------------+
- * | Image  | Access      | TRANSFER_WRITE           | SHADER_READ              |
- * | Memory | Layout      | TRANSFER_DST_OPTIMAL     | SHADER_READ_ONLY_OPTIMAL |
- * | Barrier| QueueFamily | IGNORED                  | IGNORED                  |
- * +--------+-------------+--------------------------+--------------------------+
- */
-void 
-setImageMemoryBarrier (VkCommandBuffer command, VkImage image,
-                       VkImageLayout oldLayout, VkImageLayout newLayout)
-{
-    VkImageMemoryBarrier imb = {0};
-    imb.sType                           = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    imb.oldLayout                       = oldLayout;
-    imb.newLayout                       = newLayout;
-    imb.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-    imb.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
-    imb.subresourceRange.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-    imb.subresourceRange.baseMipLevel   = 0;
-    imb.subresourceRange.levelCount     = 1;
-    imb.subresourceRange.baseArrayLayer = 0;
-    imb.subresourceRange.layerCount     = 1;
-    imb.image                           = image;
-
-    VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-
-    switch (oldLayout)
-    {
-    case VK_IMAGE_LAYOUT_UNDEFINED:
-        imb.srcAccessMask = 0;
-        break;
-    case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-        imb.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        srcStage          = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        break;
-    default:
-        break;
-    }
-
-    switch (newLayout)
-    {
-    case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-        imb.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-        dstStage          = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        break;
-    case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-        imb.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        dstStage          = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        break;
-    case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-        imb.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        dstStage          = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        break;
-    default:
-        break;
-    }
-
-    vkCmdPipelineBarrier (command, srcStage, dstStage, 0, 0,  // memoryBarrierCount
-                            NULL, 0,  // bufferMemoryBarrierCount
-                            NULL, 1,  // imageMemoryBarrierCount
-                            &imb);
-}
-
-
 static int
 create_texture (vk_t *vk, const char* fileName, vk_texture_t *ptexture)
 {
     int width, height, channels;
     uint8_t     *pImage = stbi_load(fileName, &width, &height, &channels, 0);
     VkFormat    format = VK_FORMAT_R8G8B8A8_UNORM;
-    vk_texture_t texture = {0};
 
-
-    /* create VkImage */
-    vk_create_texture (vk, width, height, format, &texture);
-
-
-    /* create staging buffer */
-    vk_buffer_t staging_buf;
-    uint32_t imageSize = width * height * sizeof(uint32_t);
-    VkBufferUsageFlags    usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
-    VkMemoryPropertyFlags mflag = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
-    vk_create_buffer (vk, imageSize, usage, mflag, pImage, &staging_buf);
-
-
-    /* create Command buffer */
-    VkCommandBuffer command;
-    VkCommandBufferAllocateInfo ai = {0};
-    ai.sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    ai.commandBufferCount   = 1;
-    ai.commandPool          = vk->cmd_pool;
-    ai.level                = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-    VK_CHECK (vkAllocateCommandBuffers (vk->dev, &ai, &command));
-
-
-    /* Copy from (staging buffer) ==> (texture buffer) */
-    VkCommandBufferBeginInfo commandBI = {0};
-    commandBI.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-
-    VK_CHECK (vkBeginCommandBuffer (command, &commandBI));
-
-    setImageMemoryBarrier (command, texture.img, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
-    VkBufferImageCopy copyRegion = {0};
-    copyRegion.imageExtent.width               = width;
-    copyRegion.imageExtent.height              = height;
-    copyRegion.imageExtent.depth               = 1;
-    copyRegion.imageSubresource.aspectMask     = VK_IMAGE_ASPECT_COLOR_BIT;
-    copyRegion.imageSubresource.mipLevel       = 0;
-    copyRegion.imageSubresource.baseArrayLayer = 0;
-    copyRegion.imageSubresource.layerCount     = 1;
-
-    vkCmdCopyBufferToImage (command, staging_buf.buf, texture.img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
-
-    setImageMemoryBarrier (command, texture.img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-    VK_CHECK (vkEndCommandBuffer (command));
-
-
-    /* Submit command */
-    VkSubmitInfo submitInfo = {0};
-    submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers    = &command;
-    VK_CHECK (vkQueueSubmit (vk->devq, 1, &submitInfo, VK_NULL_HANDLE));
-
-    /* wait copy done */
-    VK_CHECK (vkDeviceWaitIdle (vk->dev));
-
-    vkFreeCommandBuffers (vk->dev, vk->cmd_pool, 1, &command);
-
-
-    /* clean up staging buffer */
-    vkFreeMemory (vk->dev, staging_buf.mem, NULL);
-    vkDestroyBuffer (vk->dev, staging_buf.buf, NULL);
+    /* create texture and upload image data. */
+    vk_create_texture (vk, width, height, format, pImage, ptexture);
 
     stbi_image_free (pImage);
 
-    *ptexture = texture;
     return 0;
 }
 

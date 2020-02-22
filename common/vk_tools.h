@@ -45,11 +45,34 @@ extern "C" {
 #define UNUSED(x) (void)(x)
 #endif
 
+typedef struct _vt_buffer_t
+{
+    VkBuffer        buf;
+    VkDeviceMemory  mem;
+} vk_buffer_t;
+
+
+typedef struct _vk_texture_t
+{
+    VkImage         img;
+    VkDeviceMemory  mem;
+    VkImageView     view;
+    VkSampler       sampler;
+} vk_texture_t;
+
+typedef struct _vk_render_buffer_t
+{
+    VkImage         img;
+    VkDeviceMemory  mem;
+    VkImageView     view;
+} vk_render_buffer_t;
+
 
 typedef struct _vk_t
 {
     VkInstance                          instance;
     VkPhysicalDevice                    phydev;
+    VkPhysicalDeviceProperties          phydev_props;
     VkPhysicalDeviceMemoryProperties    phymem_props;
 
     uint32_t                            qidx_graphics;
@@ -72,9 +95,7 @@ typedef struct _vk_t
     VkImageView                         *swapchain_views;
 
     /* Depth Buffer */
-    VkImage                             dbuf;
-    VkDeviceMemory                      dbuf_mem;
-    VkImageView                         dbuf_view;
+    vk_render_buffer_t                  depth_buf;
 
     VkRenderPass                        render_pass;
     VkFramebuffer                       *framebuffers;
@@ -90,20 +111,6 @@ typedef struct _vk_t
 } vk_t;
 
 
-typedef struct _vt_buffer_t
-{
-    VkBuffer        buf;
-    VkDeviceMemory  mem;
-} vk_buffer_t;
-
-
-typedef struct _vt_texture_t
-{
-    VkImage         img;
-    VkDeviceMemory  mem;
-    VkImageView     view;
-    VkSampler       sampler;
-} vk_texture_t;
 
     
 #ifdef __cplusplus

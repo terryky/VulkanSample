@@ -25,7 +25,7 @@ typedef struct _render_param_t
 
 
 extern int  init_texcube (vk_t *vk, int win_w, int win_h, vk_texture_t *tex);
-extern void draw_texcube (vk_t *vk);
+extern void draw_texcube (vk_t *vk, int count);
 
 void
 cb_make_command (VkCommandBuffer command, void *usr_data)
@@ -67,7 +67,7 @@ cb_make_command (VkCommandBuffer command, void *usr_data)
      * --------------------- */
     vk_begin_render_target (vk, NULL);
 
-    draw_texcube (vk);
+    draw_texcube (vk, rparam->count);
     draw_pmeter (vk, 0, 40);
 
     begin_dbgstr (vk);

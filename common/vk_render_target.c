@@ -63,150 +63,10 @@ create_render_pass (vk_t *vk, VkRenderPass *rnd_pass, VkFormat cformat, VkFormat
     return 0;
 }
 
-static int
-create_rtarget_color (vk_t *vk, vk_texture_t *vk_tex, uint32_t width, uint32_t height, VkFormat format)
-{
-    VkImage         img;
-    VkDeviceMemory  mem;
-    VkImageView     view;
-    VkSampler       sampler;
-
-    /* create VkImage */
-    VkImageCreateInfo ci = {0};
-    ci.sType            = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    ci.imageType        = VK_IMAGE_TYPE_2D;
-    ci.format           = format;
-    ci.extent.width     = width;
-    ci.extent.height    = height;
-    ci.extent.depth     = 1;
-    ci.mipLevels        = 1;
-    ci.arrayLayers      = 1;
-    ci.samples          = VK_SAMPLE_COUNT_1_BIT;
-    ci.tiling           = VK_IMAGE_TILING_OPTIMAL;
-    ci.usage            = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    ci.sharingMode      = VK_SHARING_MODE_EXCLUSIVE;
-    ci.initialLayout    = VK_IMAGE_LAYOUT_UNDEFINED;
-
-    VK_CHECK (vkCreateImage (vk->dev, &ci, NULL, &img));
-
-    /* Allocate Memory for VkImage */
-    VkMemoryRequirements reqs;
-    vkGetImageMemoryRequirements (vk->dev, img, &reqs);
-
-    VkMemoryAllocateInfo ai = {0};
-    ai.sType           = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    ai.allocationSize  = reqs.size;
-    ai.memoryTypeIndex = vk_get_memory_type_index (reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    VK_CHECK (vkAllocateMemory (vk->dev, &ai, NULL, &mem));
-    VK_CHECK (vkBindImageMemory (vk->dev, img, mem, 0));
-
-    /* create VkImageView */
-    VkImageViewCreateInfo vci = {0};
-    vci.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    vci.viewType         = VK_IMAGE_VIEW_TYPE_2D;
-    vci.image            = img;
-    vci.format           = format;
-    vci.components.r     = VK_COMPONENT_SWIZZLE_R;
-    vci.components.g     = VK_COMPONENT_SWIZZLE_G;
-    vci.components.b     = VK_COMPONENT_SWIZZLE_B;
-    vci.components.a     = VK_COMPONENT_SWIZZLE_A;
-    vci.subresourceRange.aspectMask      = VK_IMAGE_ASPECT_COLOR_BIT;
-    vci.subresourceRange.baseMipLevel    = 0;
-    vci.subresourceRange.levelCount      = 1;
-    vci.subresourceRange.baseArrayLayer  = 0;
-    vci.subresourceRange.layerCount      = 1;
-
-    VK_CHECK (vkCreateImageView (vk->dev, &vci, NULL, &view));
-
-    /* create VkSampler */
-    VkSamplerCreateInfo sci = {0};
-    sci.sType         = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
-    sci.minFilter     = VK_FILTER_LINEAR;
-    sci.magFilter     = VK_FILTER_LINEAR;
-    sci.addressModeU  = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    sci.addressModeV  = VK_SAMPLER_ADDRESS_MODE_REPEAT;
-    sci.maxAnisotropy = 1.0f;
-    sci.borderColor   = VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE;
-
-    VK_CHECK (vkCreateSampler (vk->dev, &sci, NULL, &sampler));
-
-
-    vk_tex->img     = img;
-    vk_tex->mem     = mem;
-    vk_tex->view    = view;
-    vk_tex->sampler = sampler;
-
-    return 0;
-    
-}
-
-
-static int
-create_rtarget_depth (vk_t *vk, vk_texture_t *depth, uint32_t width, uint32_t height, VkFormat format)
-{
-    VkImage         img;
-    VkDeviceMemory  mem;
-    VkImageView     view;
-
-    VkImageCreateInfo ci = {0};
-    ci.sType            = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
-    ci.imageType        = VK_IMAGE_TYPE_2D;
-    ci.format           = format;
-    ci.extent.width     = width;
-    ci.extent.height    = height;
-    ci.extent.depth     = 1;
-    ci.mipLevels        = 1;
-    ci.arrayLayers      = 1;
-    ci.samples          = VK_SAMPLE_COUNT_1_BIT;
-    ci.usage            = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-    ci.sharingMode      = VK_SHARING_MODE_EXCLUSIVE;
-    ci.initialLayout    = VK_IMAGE_LAYOUT_UNDEFINED;
-
-    VK_CHECK (vkCreateImage (vk->dev, &ci, NULL, &img));
-
-    /* Allocate memory for Depth Buffer */
-    VkMemoryRequirements reqs;
-    vkGetImageMemoryRequirements (vk->dev, img, &reqs);
-
-    VkMemoryAllocateInfo ai = {0};
-    ai.sType            = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-    ai.allocationSize   = reqs.size;
-    ai.memoryTypeIndex  = vk_get_memory_type_index (reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
-
-    VK_CHECK (vkAllocateMemory  (vk->dev, &ai, NULL, &mem));
-    VK_CHECK (vkBindImageMemory (vk->dev, img, mem, 0));
-
-    /* create VkImageView */
-    VkImageViewCreateInfo vci = {0};
-    vci.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-    vci.viewType         = VK_IMAGE_VIEW_TYPE_2D;
-    vci.image            = img;
-    vci.format           = format;
-    vci.components.r     = VK_COMPONENT_SWIZZLE_R;
-    vci.components.g     = VK_COMPONENT_SWIZZLE_G;
-    vci.components.b     = VK_COMPONENT_SWIZZLE_B;
-    vci.components.a     = VK_COMPONENT_SWIZZLE_A;
-    vci.subresourceRange.aspectMask      = VK_IMAGE_ASPECT_DEPTH_BIT;
-    vci.subresourceRange.baseMipLevel    = 0;
-    vci.subresourceRange.levelCount      = 1;
-    vci.subresourceRange.baseArrayLayer  = 0;
-    vci.subresourceRange.layerCount      = 1;
-
-    VK_CHECK (vkCreateImageView (vk->dev, &vci, NULL, &view));
-
-    depth->img  = img;
-    depth->mem  = mem;
-    depth->view = view;
-
-    return 0;
-}
-
-
 
 static int
 create_rtarget_frame_buffer (vk_t *vk, VkFramebuffer *fb, uint32_t width, uint32_t height, VkRenderPass render_pass,
-                             vk_texture_t color_tgt, vk_texture_t depth_tgt)
+                             vk_render_buffer_t color_tgt, vk_render_buffer_t depth_tgt)
 {
     VkImageView attachments[2];
     attachments[0] = color_tgt.view;
@@ -236,20 +96,29 @@ vk_create_render_target (vk_t *vk, vk_rtarget_t *rtarget)
     uint32_t     width  = 960;
     uint32_t     height = 540;
     VkRenderPass rnd_pass;
-    vk_texture_t color_tgt;
-    vk_texture_t depth_tgt;
+    vk_texture_t color_tex;
+    vk_render_buffer_t color_tgt;
+    vk_render_buffer_t depth_tgt;
     VkFramebuffer tgt_fb;
 
     create_render_pass (vk, &rnd_pass, cformat, dformat);
 
-    create_rtarget_color (vk, &color_tgt, width, height, cformat);
-    create_rtarget_depth (vk, &depth_tgt, width, height, dformat);
+    /* color, depth */
+    VkImageUsageFlags img_usage = VK_IMAGE_USAGE_SAMPLED_BIT;
+    vk_create_render_buffer (vk, &color_tgt, width, height, cformat, 0, img_usage);
+    vk_create_render_buffer (vk, &depth_tgt, width, height, dformat, 1, img_usage);
 
+    /* FB */
     create_rtarget_frame_buffer (vk, &tgt_fb, width, height, rnd_pass, color_tgt, depth_tgt);
+
+    color_tex.img     = color_tgt.img;
+    color_tex.mem     = color_tgt.mem;
+    color_tex.view    = color_tgt.view;
+    vk_create_sampler (vk, &color_tex.sampler);
 
     rtarget->framebuffer = tgt_fb;
     rtarget->render_pass = rnd_pass;
-    rtarget->color_tgt   = color_tgt;
+    rtarget->color_tgt   = color_tex;
     rtarget->depth_tgt   = depth_tgt;
     rtarget->width       = width;
     rtarget->height      = height;
@@ -327,33 +196,14 @@ vk_barrier_render_target (vk_t *vk, vk_rtarget_t *rtarget)
      * +----------------------+--------------------------+--------------------------+
      * |Pipeline stage barrier| COLOR_ATTACHMENT_OUTPUT  | FRAGMENT_SHADER          |
      * +--------+-------------+--------------------------+--------------------------+
-     * | Image  | Access      | COLOR_ATTACHMENT_WRITE   | SHADER_READ_BIT          |
+     * | Image  | Access      | COLOR_ATTACHMENT_WRITE   | SHADER_READ              |
      * | Memory | Layout      | COLOR_ATTACHMENT_OPTIMAL | SHADER_READ_ONLY_OPTIMAL |
      * | Barrier| QueueFamily | IGNORED                  | IGNORED                  |
      * +--------+-------------+--------------------------+--------------------------+
      */
-    VkImageMemoryBarrier img_barrier = {0};
-    img_barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    img_barrier.srcAccessMask       = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    img_barrier.dstAccessMask       = VK_ACCESS_SHADER_READ_BIT;
-    img_barrier.oldLayout           = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    img_barrier.newLayout           = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    img_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    img_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    img_barrier.image               = rtarget->color_tgt.img;
-    img_barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    img_barrier.subresourceRange.baseMipLevel   = 0;
-    img_barrier.subresourceRange.levelCount     = 1;
-    img_barrier.subresourceRange.baseArrayLayer = 0;
-    img_barrier.subresourceRange.layerCount     = 1;
-
-    vkCmdPipelineBarrier (command,
-        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,  /* Src stage */
-        VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,          /* Dst stage */
-        VK_DEPENDENCY_BY_REGION_BIT,                    /* dependency */
-        0, NULL,                                        /* Memory barrier */
-        0, NULL,                                        /* Bufer memory barrier */
-        1, &img_barrier);                               /* Image memory barrier */
+    vk_put_image_barrier (vk, command, rtarget->color_tgt.img,
+                          VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, 
+                          VK_ACCESS_SHADER_READ_BIT);
 
     return 0;
 }

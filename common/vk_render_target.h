@@ -13,12 +13,12 @@ extern "C" {
 
 typedef struct _vk_rtarget_t
 {
-    VkFramebuffer   framebuffer;
-    VkRenderPass    render_pass;
-    vk_texture_t    color_tgt;
-    vk_texture_t    depth_tgt;
-    uint32_t        width;
-    uint32_t        height;
+    VkFramebuffer       framebuffer;
+    VkRenderPass        render_pass;
+    vk_texture_t        color_tgt;
+    vk_render_buffer_t  depth_tgt;
+    uint32_t            width;
+    uint32_t            height;
 } vk_rtarget_t;
 
 
