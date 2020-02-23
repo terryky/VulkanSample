@@ -45,7 +45,7 @@ extern "C" {
 #define UNUSED(x) (void)(x)
 #endif
 
-typedef struct _vt_buffer_t
+typedef struct _vk_buffer_t
 {
     VkBuffer        buf;
     VkDeviceMemory  mem;
@@ -66,6 +66,13 @@ typedef struct _vk_render_buffer_t
     VkDeviceMemory  mem;
     VkImageView     view;
 } vk_render_buffer_t;
+
+
+typedef struct _vk_struct_chain_info_t
+{
+    VkStructureType sType;
+    uint32_t        size;
+} vk_struct_chain_info_t;
 
 
 typedef struct _vk_t

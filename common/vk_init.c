@@ -31,7 +31,7 @@ vkin_create_instance (vk_t *vk, const char* app_name)
     for (uint32_t i = 0; i < inst_ext_num; i ++)
     {
         inst_ext[i] = props[i].extensionName;
-        VK_PRINT ("inst_ext[%2d/%2d] %s\n", i, inst_ext_num, inst_ext[i]);
+        //VK_PRINT ("inst_ext[%2d/%2d] %s\n", i, inst_ext_num, inst_ext[i]);
     }
 
     /* Layer properties */
@@ -117,6 +117,32 @@ vkin_select_physical_device (vk_t *vk)
     VK_PRINT ("phymem_props: memoryHeapCount = %d\n", vk->phymem_props.memoryHeapCount);
     VK_PRINT ("phymem_props: memoryTypeCount = %d\n", vk->phymem_props.memoryTypeCount);
 
+
+    if (dprops.apiVersion >= VK_MAKE_VERSION (1, 1, 0))
+    {
+        vk_struct_chain_info_t chain_info[1] = {0};
+        chain_info[0].sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR;
+        chain_info[0].size  = sizeof (VkPhysicalDeviceDriverPropertiesKHR);
+
+        VkPhysicalDeviceProperties2 dprops2 = {0};
+        dprops2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2_KHR;
+        vk_build_struct_chain ((VkBaseOutStructure *)&dprops2, chain_info, ARRAY_LENGTH (chain_info));
+
+        vkGetPhysicalDeviceProperties2 (vk->phydev, &dprops2);
+        
+        VkPhysicalDeviceDriverPropertiesKHR *ddprop = dprops2.pNext;
+        VK_PRINT ("-- VkPhysicalDeviceDriverPropertiesKHR ---\n");
+        VK_PRINT (" driverID     : %d\n",     ddprop->driverID);
+        VK_PRINT (" driverName   : %s\n",     ddprop->driverName);
+        VK_PRINT (" driverInfo   : %s\n",     ddprop->driverInfo);
+        VK_PRINT (" conformance  : (%d.%d.%d.%d)\n", 
+                            ddprop->conformanceVersion.major,
+                            ddprop->conformanceVersion.minor,
+                            ddprop->conformanceVersion.subminor,
+                            ddprop->conformanceVersion.patch);
+        VK_PRINT ("------------------------------------------\n");
+    }
+    
     return 0;
 }
 
@@ -131,11 +157,30 @@ vkin_select_devqueue_index (vk_t *vk)
     uint32_t qidx_graphics = ~0;
     for (uint32_t i = 0; i < propcnt; i++)
     {
+        VK_PRINT ("VkQueueFamilyProperties[%d/%d] ", i, propcnt);
         if (props[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
         {
-            qidx_graphics = i;
-            break;
+            VK_PRINT ("GRAPHICS | ");
+            if (qidx_graphics == ~0)
+                qidx_graphics = i;
         }
+        if (props[i].queueFlags & VK_QUEUE_COMPUTE_BIT)
+        {
+            VK_PRINT ("COMPUTE | ");
+        }
+        if (props[i].queueFlags & VK_QUEUE_TRANSFER_BIT)
+        {
+            VK_PRINT ("TRANSFER | ");
+        }
+        if (props[i].queueFlags & VK_QUEUE_SPARSE_BINDING_BIT )
+        {
+            VK_PRINT ("SPARSE | ");
+        }
+        if (props[i].queueFlags & VK_QUEUE_PROTECTED_BIT )
+        {
+            VK_PRINT ("PROTECTED | ");
+        }
+        VK_PRINT ("\n");
     }
 
     if (qidx_graphics == ~0)
@@ -165,7 +210,7 @@ vkin_create_device (vk_t *vk)
     for (uint32_t i = 0; i < dev_ext_num; i ++)
     {
         dev_ext[i] = props[i].extensionName;
-        VK_PRINT ("dev_ext[%2d/%2d] %s\n", i, dev_ext_num, dev_ext[i]);
+        //VK_PRINT ("dev_ext[%2d/%2d] %s\n", i, dev_ext_num, dev_ext[i]);
     }
 
 
@@ -372,7 +417,7 @@ vk_get_memory_type_index (vk_t *vk, uint32_t requestBits, VkMemoryPropertyFlags 
  *  | |Color FBO    | COLOR_ATTACHMENT         | SAMPLED |                     |
  *  +-+-------------+------------------------------------+---------------------+
  *  | |Depth Present| DEPTH_STENCIL_ATTACHMENT           |                     |
- *  |1+-------------+------------------------------------+        DEPTH        |
+ *  |1+-------------+------------------------------------+    DEPTH | STENCIL  |
  *  | |Depth FBO    | DEPTH_STENCIL_ATTACHMENT | SAMPLED |                     |
  *  +-+-------------+------------------------------------+---------------------+
  *  |2|Texture      | TRANSFER_DST             | SAMPLED |        COLOR        |
@@ -405,7 +450,7 @@ vk_create_render_buffer (vk_t *vk, vk_render_buffer_t *depth_buf,
     /* for Depth */
     case 1:
         img_usage  = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT ;
-        img_aspect = VK_IMAGE_ASPECT_DEPTH_BIT;
+        img_aspect = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
         break;
     /* for Texture */
     case 2:
@@ -419,7 +464,7 @@ vk_create_render_buffer (vk_t *vk, vk_render_buffer_t *depth_buf,
     img_usage |= ext_img_usage;
 
 
-    /* Create "Image" for Depth Buffer */
+    /* Create "Image" for Color/Depth/Texture Buffer */
     VkImageCreateInfo ci = {0};
     ci.sType            = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
     ci.imageType        = VK_IMAGE_TYPE_2D;
@@ -438,7 +483,7 @@ vk_create_render_buffer (vk_t *vk, vk_render_buffer_t *depth_buf,
     VK_CHECK (vkCreateImage (vk->dev, &ci, NULL, &img));
 
 
-    /* Allocate memory for Depth Buffer */
+    /* Allocate memory for Color/Depth/Texture Buffer */
     VkMemoryRequirements reqs;
     vkGetImageMemoryRequirements (vk->dev, img, &reqs);
 
@@ -451,7 +496,7 @@ vk_create_render_buffer (vk_t *vk, vk_render_buffer_t *depth_buf,
     VK_CHECK (vkBindImageMemory (vk->dev, img, mem, 0));
 
 
-    /* Create "ImageView" for Depth */
+    /* Create "ImageView" for Color/Depth/Texture */
     VkImageViewCreateInfo vci = {0};
     vci.sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
     vci.viewType         = VK_IMAGE_VIEW_TYPE_2D;
@@ -1100,6 +1145,30 @@ vk_destroy_default_blend_state (vk_t *vk, VkPipelineColorBlendStateCreateInfo *s
 }
 
 
+/* ----------------------------------------------------------------------- *
+ *    Create "struct-chain" for extentions.
+ *
+ *      [head]
+ *      +-----+   +-----+   +-----+
+ *      |sType|   |sType|   |sType|
+ *      |pNext|-->|pNext|-->|pNext|
+ *      +-----+   +-----+   +-----+
+ * ----------------------------------------------------------------------- */
+int
+vk_build_struct_chain (VkBaseOutStructure *head, vk_struct_chain_info_t *chain_info, uint32_t chain_len)
+{
+    VkBaseOutStructure *phead = head;
+
+    for (uint32_t i = 0; i < chain_len; i++)
+    {
+        VkBaseOutStructure *phead_new = calloc (1, chain_info[i].size);
+        phead_new->sType = chain_info[i].sType;
+
+        phead->pNext = phead_new;
+        phead = phead->pNext;
+    }
+    return 0;
+}
 
 
 

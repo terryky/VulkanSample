@@ -51,6 +51,7 @@ int     vk_destroy_default_multisample_state (vk_t *vk, VkPipelineMultisampleSta
 int     vk_destroy_default_depth_stencil_state (vk_t *vk, VkPipelineDepthStencilStateCreateInfo *state);
 int     vk_destroy_default_blend_state (vk_t *vk, VkPipelineColorBlendStateCreateInfo *state);
 
+int     vk_build_struct_chain (VkBaseOutStructure *head, vk_struct_chain_info_t *chain_info, uint32_t chain_len);
 
 #ifdef __cplusplus
 }
