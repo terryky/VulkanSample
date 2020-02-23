@@ -1007,6 +1007,14 @@ vk_get_default_viewport_state (vk_t *vk, VkPipelineViewportStateCreateInfo *stat
     VkViewport *viewport = VK_CALLOC (VkViewport, 1);
     VkRect2D   *scissor  = VK_CALLOC (VkRect2D, 1);
 
+    /*
+     * Differences regarding viewport coordinates:
+     *   [Vulkan] Top    Left is the origin.
+     *   [OpenGL] Bottom Left is the origin.
+     *
+     * we set a negative height to resolve these difference.
+     * (this requires "VK_KHR_maintenance1" extension)
+     */
     viewport->x        = 0.0f;
     viewport->y        = vk->swapchain_extent.height;
     viewport->width    = vk->swapchain_extent.width;

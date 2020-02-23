@@ -250,8 +250,8 @@ init_pipeline (vk_t *vk)
      *  Shader Stage
      * ---------------------------------------------------- */
     VkShaderModule shaders[2] = {0};
-    vk_load_shader_module (vk, "shaders/util_pmeter.vert.spv", &shaders[0]);
-    vk_load_shader_module (vk, "shaders/util_pmeter.frag.spv", &shaders[1]);
+    vk_load_shader_module (vk, VKUTIL_COMMON_DIR"shaders/util_pmeter.vert.spv", &shaders[0]);
+    vk_load_shader_module (vk, VKUTIL_COMMON_DIR"shaders/util_pmeter.frag.spv", &shaders[1]);
 
     VkPipelineShaderStageCreateInfo shaderStages[2] = {0};
     shaderStages[0].sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
