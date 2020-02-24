@@ -1,6 +1,6 @@
 include ../Makefile.env
 
-TARGET = vkteapot
+TARGET = vkfbo
 
 SRCS = 
 SRCS += main.c
