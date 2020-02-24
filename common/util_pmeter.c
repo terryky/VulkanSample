@@ -481,7 +481,7 @@ draw_pmeter_ex (vk_t *vk, int dpy_id, int x, int y, float scale)
     ubo_vs.PrjAdd[3] =  1.0f;
 
     /* Upload UBO */
-    vk_devmemcpy (vk, s_ubo_vs[vk->image_index].mem, &ubo_vs, sizeof(ubo_vs));
+    vk_devmemcpy (vk, s_ubo_vs[vk->image_index].mem, 0, &ubo_vs, sizeof(ubo_vs));
 
     /* ------------------------- *
      *  update Instance UBO
@@ -524,7 +524,7 @@ draw_pmeter_ex (vk_t *vk, int dpy_id, int x, int y, float scale)
     }
 
     /* upload Instance UBO */
-    vk_devmemcpy (vk, s_ubo_vs_instance[vk->image_index].mem, 
+    vk_devmemcpy (vk, s_ubo_vs_instance[vk->image_index].mem, 0, 
                     s_vs_instance, sizeof(s_vs_instance[0]) * draw_cnt);
 
     /* ------------------------- *
@@ -532,7 +532,8 @@ draw_pmeter_ex (vk_t *vk, int dpy_id, int x, int y, float scale)
      * ------------------------- */
 
     /* graph */
-    vk_devmemcpy (vk, s_vtx_graph_buf.mem, s_vertPM[dpy_id][3], sizeof(float) * 2 * s_data_num);
+    vk_devmemcpy (vk, s_vtx_graph_buf.mem, 0, 
+                    s_vertPM[dpy_id][3], sizeof(float) * 2 * s_data_num);
 
     /* ------------------------------------ *
      *  Bind Vertex buffer and Draw

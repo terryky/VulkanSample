@@ -445,7 +445,7 @@ draw_texcube (vk_t *vk, int count)
     memcpy (ubo_vs.matMVI, matMVI, sizeof (matMVI));
 
     /* Upload UBO */
-    vk_devmemcpy (vk, s_ubo_vs[vk->image_index].mem, &ubo_vs, sizeof(ubo_vs));
+    vk_devmemcpy (vk, s_ubo_vs[vk->image_index].mem, 0, &ubo_vs, sizeof(ubo_vs));
 
 
     /* ------------------------------------ *

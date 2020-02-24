@@ -4071,13 +4071,13 @@ draw_teapot (vk_t *vk, int count, float col[3])
     memcpy (ubo_vs.matMVI, matMVI, sizeof (matMVI));
 
     /* Upload UBO */
-    vk_devmemcpy (vk, s_ubo_vs[vk->image_index].mem, &ubo_vs, sizeof(ubo_vs));
+    vk_devmemcpy (vk, s_ubo_vs[vk->image_index].mem, 0, &ubo_vs, sizeof(ubo_vs));
 
     ubo_fs_t ubo_fs = {0};
     memcpy (ubo_fs.color, col, sizeof (ubo_fs.color));
 
     /* Upload UBO */
-    vk_devmemcpy (vk, s_ubo_fs[vk->image_index].mem, &ubo_fs, sizeof(ubo_fs));
+    vk_devmemcpy (vk, s_ubo_fs[vk->image_index].mem, 0, &ubo_fs, sizeof(ubo_fs));
 
     /* ------------------------------------ *
      *  Bind Vertex buffer and Draw
