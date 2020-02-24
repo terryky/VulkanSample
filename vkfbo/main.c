@@ -33,7 +33,9 @@ cb_make_command (VkCommandBuffer command, void *usr_data)
     vk_t *vk = (vk_t *)usr_data;
     render_param_t *rparam = (render_param_t *)vk->user_data;
     vk_rtarget_t rtarget = rparam->rtarget;
-    
+    float col_b[] = {0.0f, 0.0f, 1.0f, 1.0f};
+    float col_w[] = {1.0f, 1.0f, 1.0f, 1.0f};
+
     static double ttime0 = 0, ttime1 = 0, interval;
     static int count = 0;
     char strbuf[512];
@@ -45,6 +47,7 @@ cb_make_command (VkCommandBuffer command, void *usr_data)
     interval = (count > 0) ? ttime1 - ttime0 : 0;
     ttime0 = ttime1;
 
+    begin_dbgstr (vk);
 
     /* --------------------- *
      * render to FBO
@@ -52,6 +55,9 @@ cb_make_command (VkCommandBuffer command, void *usr_data)
     vk_begin_render_target (vk, &rtarget);
 
     draw_teapot (vk, rparam->count, rparam->col);
+
+    sprintf (strbuf, "FBO: %d", count);
+    draw_dbgstr_ex (vk, strbuf, 10, 10, 2.0f, col_w, col_b);
 
     vk_end_render_target (vk, &rtarget);
 
@@ -70,13 +76,12 @@ cb_make_command (VkCommandBuffer command, void *usr_data)
     draw_texcube (vk, rparam->count);
     draw_pmeter (vk, 0, 40);
 
-    begin_dbgstr (vk);
     sprintf (strbuf, "%.1f [ms]\n", interval);
     draw_dbgstr (vk, strbuf, 10, 10);
-    end_dbgstr (vk);
 
     vk_end_render_target (vk, NULL);
 
+    end_dbgstr (vk);
 
     count ++;
 }

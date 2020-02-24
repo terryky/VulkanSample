@@ -405,6 +405,8 @@ int
 draw_dbgstr_ex (vk_t *vk, char *str, int x, int y, float scale, float *col_fg, float *col_bg)
 {
     int   i, row, column;
+    int   start_idx = s_draw_cnt;
+    int   draw_cnt = 0;
     float fW = DEBSTR_FONT_WIDTH  * scale;
     float fH = DEBSTR_FONT_HEIGHT * scale;
     float fx = (float)x;
@@ -413,6 +415,12 @@ draw_dbgstr_ex (vk_t *vk, char *str, int x, int y, float scale, float *col_fg, f
     row = column = 0;
     for (i = 0; ; i ++)
     {
+        if (start_idx + draw_cnt >= MAX_INSTANCE_NUM)
+        {
+            VK_LOGI ("excess MAX_INSTANCE_NUM (%d)\n", MAX_INSTANCE_NUM);
+            break;
+        }
+
         int c = str[i];
 
         if ( c == 0 )
@@ -425,7 +433,7 @@ draw_dbgstr_ex (vk_t *vk, char *str, int x, int y, float scale, float *col_fg, f
             continue;
         }
 
-        ubo_vs_instance_t *inst = &s_vs_instance[s_draw_cnt];
+        ubo_vs_instance_t *inst = &s_vs_instance[start_idx + draw_cnt];
 
         inst->ofst_vtx[0] = fx + (fW * column);
         inst->ofst_vtx[1] = fy + (fH * row);
@@ -440,9 +448,61 @@ draw_dbgstr_ex (vk_t *vk, char *str, int x, int y, float scale, float *col_fg, f
         memcpy (inst->col_bg, col_bg, sizeof (inst->col_bg));
 
         column ++;
-        s_draw_cnt ++;
+        draw_cnt ++;
     }
 
+    if (draw_cnt == 0)
+        return 0;
+
+    /* ----------------------------------------------------------------------- *
+     *    Vulkan Render
+     * ----------------------------------------------------------------------- */
+    VkCommandBuffer command = vk->cmd_bufs[vk->image_index];
+    vkCmdBindPipeline (command, VK_PIPELINE_BIND_POINT_GRAPHICS, s_pipeline);
+
+    vkCmdBindDescriptorSets (command, VK_PIPELINE_BIND_POINT_GRAPHICS, s_pipelineLayout, 0, 1, 
+                             &s_descriptorSet[vk->image_index], 0, NULL);
+
+    /* ------------------------- *
+     *  update UBO
+     * ------------------------- */
+    if (start_idx == 0)
+    {
+        ubo_vs_t ubo_vs = {0};
+        ubo_vs.PrjMul[0] =  2.0f / s_wndW;
+        ubo_vs.PrjMul[1] = -2.0f / s_wndH;
+        ubo_vs.PrjMul[2] =  0.0f;
+        ubo_vs.PrjMul[3] =  0.0f;
+        ubo_vs.PrjAdd[0] = -1.0f;
+        ubo_vs.PrjAdd[1] =  1.0f;
+        ubo_vs.PrjAdd[2] =  1.0f;
+        ubo_vs.PrjAdd[3] =  1.0f;
+
+        /* Upload UBO */
+        vk_devmemcpy (vk, s_ubo_vs[vk->image_index].mem, 0, &ubo_vs, sizeof(ubo_vs));
+    }
+
+    /* ------------------------- *
+     *  update Instance UBO
+     * ------------------------- */
+
+    /* upload Instance UBO */
+    vk_devmemcpy (vk, s_ubo_vs_instance[vk->image_index].mem, sizeof(s_vs_instance[0]) * start_idx,
+                    &s_vs_instance[start_idx], sizeof(s_vs_instance[0]) * draw_cnt);
+
+    /* ------------------------------------ *
+     *  Bind Vertex buffer and Draw
+     * ------------------------------------ */
+    VkBuffer     buffer[2] = {0};
+    VkDeviceSize offset[2] = {0};
+
+    buffer[0] = s_vtx_buf.buf;
+    buffer[1] = s_uv0_buf.buf;
+    vkCmdBindVertexBuffers (command, 0, 2, buffer,  offset);
+
+    vkCmdDraw (command, 4, draw_cnt, 0, start_idx);
+
+    s_draw_cnt = start_idx + draw_cnt;
     return 0;
 }
 
@@ -467,54 +527,6 @@ begin_dbgstr (vk_t *vk)
 int
 end_dbgstr (vk_t *vk)
 {
-    if (s_draw_cnt <= 0)
-        return 0;
-
-    /* ----------------------------------------------------------------------- *
-     *    Vulkan Render
-     * ----------------------------------------------------------------------- */
-    VkCommandBuffer command = vk->cmd_bufs[vk->image_index];
-    vkCmdBindPipeline (command, VK_PIPELINE_BIND_POINT_GRAPHICS, s_pipeline);
-
-    vkCmdBindDescriptorSets (command, VK_PIPELINE_BIND_POINT_GRAPHICS, s_pipelineLayout, 0, 1, 
-                             &s_descriptorSet[vk->image_index], 0, NULL);
-
-    /* ------------------------- *
-     *  update UBO
-     * ------------------------- */
-    ubo_vs_t ubo_vs = {0};
-    ubo_vs.PrjMul[0] =  2.0f / s_wndW;
-    ubo_vs.PrjMul[1] = -2.0f / s_wndH;
-    ubo_vs.PrjMul[2] =  0.0f;
-    ubo_vs.PrjMul[3] =  0.0f;
-    ubo_vs.PrjAdd[0] = -1.0f;
-    ubo_vs.PrjAdd[1] =  1.0f;
-    ubo_vs.PrjAdd[2] =  1.0f;
-    ubo_vs.PrjAdd[3] =  1.0f;
-
-    /* Upload UBO */
-    vk_devmemcpy (vk, s_ubo_vs[vk->image_index].mem, &ubo_vs, sizeof(ubo_vs));
-
-    /* ------------------------- *
-     *  update Instance UBO
-     * ------------------------- */
-
-    /* upload Instance UBO */
-    vk_devmemcpy (vk, s_ubo_vs_instance[vk->image_index].mem, 
-                    s_vs_instance, sizeof(s_vs_instance[0]) * s_draw_cnt);
-
-    /* ------------------------------------ *
-     *  Bind Vertex buffer and Draw
-     * ------------------------------------ */
-    VkBuffer     buffer[2] = {0};
-    VkDeviceSize offset[2] = {0};
-
-    buffer[0] = s_vtx_buf.buf;
-    buffer[1] = s_uv0_buf.buf;
-    vkCmdBindVertexBuffers (command, 0, 2, buffer,  offset);
-
-    vkCmdDraw (command, 4, s_draw_cnt, 0, 0);
-
     return 0;
 }
 
