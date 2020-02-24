@@ -22,7 +22,7 @@ int     vk_create_texture (vk_t *vk, uint32_t width, uint32_t height, VkFormat f
 int     vk_create_sampler (vk_t *vk, VkSampler *sampler);
 
 int     vk_load_shader_module (vk_t *vk, const char* fname, VkShaderModule *sm);
-int     vk_devmemcpy (vk_t *vk, VkDeviceMemory mem, void *psrc, uint32_t size);
+int     vk_devmemcpy (vk_t *vk, VkDeviceMemory mem, uint32_t offset, void *psrc, uint32_t size);
 
 uint32_t vk_get_memory_type_index (vk_t *vk, uint32_t requestBits, VkMemoryPropertyFlags requestProps);
 

@@ -677,7 +677,7 @@ vk_create_buffer (vk_t *vk, uint32_t size,
 
     if (psrc)
     {
-        vk_devmemcpy (vk, mem, psrc, size);
+        vk_devmemcpy (vk, mem, 0, psrc, size);
     }
 
 
@@ -858,11 +858,11 @@ vk_load_shader_module (vk_t *vk, const char* fname, VkShaderModule *sm)
 }
 
 int
-vk_devmemcpy (vk_t *vk, VkDeviceMemory mem, void *psrc, uint32_t size)
+vk_devmemcpy (vk_t *vk, VkDeviceMemory mem, uint32_t offset, void *psrc, uint32_t size)
 {
     void *p;
 
-    VK_CHECK (vkMapMemory (vk->dev, mem, 0, size, 0, &p));
+    VK_CHECK (vkMapMemory (vk->dev, mem, offset, size, 0, &p));
     memcpy (p, psrc, size);
     vkUnmapMemory (vk->dev, mem);
 
