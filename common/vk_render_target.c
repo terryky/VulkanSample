@@ -201,9 +201,10 @@ vk_barrier_render_target (vk_t *vk, vk_rtarget_t *rtarget)
      * | Barrier| QueueFamily | IGNORED                  | IGNORED                  |
      * +--------+-------------+--------------------------+--------------------------+
      */
-    vk_put_image_barrier (vk, command, rtarget->color_tgt.img,
-                          VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, 
-                          VK_ACCESS_SHADER_READ_BIT);
+    vk_insert_image_barrier (vk, command, rtarget->color_tgt.img,
+             VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,          VK_ACCESS_SHADER_READ_BIT,
+             VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+             VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
     return 0;
 }

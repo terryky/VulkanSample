@@ -342,6 +342,12 @@ vkin_create_swap_chain (vk_t *vk, int win_w, int win_h, VkPresentModeKHR present
     ci.clipped          = VK_TRUE;
     ci.compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
 
+    /* Enable transfer source if supported. (for ReadPixels) */
+    if (vk->sfc_caps.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
+    {
+        ci.imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+    }
+
     VK_CHECK (vkCreateSwapchainKHR (vk->dev, &ci, NULL, &vk->swapchain));
 
     vk->swapchain_extent = extent;
@@ -402,29 +408,37 @@ vk_get_memory_type_index (vk_t *vk, uint32_t requestBits, VkMemoryPropertyFlags 
         }
         requestBits >>= 1;
     }
+
+    if (result == ~0)
+    {
+        VK_LOGE ("ERR: vk_get_memory_type_index(); %d\n", result);
+    }
+
     return result;
 }
 
 
 /*
  *
- *  +---------------+------------------------------------+---------------------+
- *  |   U S A G E   | Image Usage Flag                   |ImageView Aspect Mask|
- *  |               | (VK_IMAGE_USAGE_XXX_BIT)           |(VK_IMAGE_ASPECT_XXX)|
- *  +-+-------------+------------------------------------+---------------------+
- *  | |Color Present| COLOR_ATTACHMENT                   |                     |
- *  |0+-------------+------------------------------------+        COLOR        |
- *  | |Color FBO    | COLOR_ATTACHMENT         | SAMPLED |                     |
- *  +-+-------------+------------------------------------+---------------------+
- *  | |Depth Present| DEPTH_STENCIL_ATTACHMENT           |                     |
- *  |1+-------------+------------------------------------+    DEPTH | STENCIL  |
- *  | |Depth FBO    | DEPTH_STENCIL_ATTACHMENT | SAMPLED |                     |
- *  +-+-------------+------------------------------------+---------------------+
- *  |2|Texture      | TRANSFER_DST             | SAMPLED |        COLOR        |
- *  +-+-------------+------------------------------------+---------------------+
+ *  +---------------+------------------------------------+-------+-------+---------------------+
+ *  |   U S A G E   | Image Usage Flag                   |Image  |Mem    |ImageView Aspect Mask|
+ *  |               | (VK_IMAGE_USAGE_XXX_BIT)           |Tiling |Props  |(VK_IMAGE_ASPECT_XXX)|
+ *  +-+-------------+------------------------------------+-------+-------+---------------------+
+ *  | |Color Present| COLOR_ATTACHMENT                   |       |       |                     |
+ *  |0+-------------+------------------------------------+OPTIMAL|DEVICE_|       COLOR         |
+ *  | |Color FBO    | COLOR_ATTACHMENT         | SAMPLED |       |LOCAL  |                     |
+ *  +-+-------------+------------------------------------+       |       +---------------------+
+ *  | |Depth Present| DEPTH_STENCIL_ATTACHMENT           |       |       |                     |
+ *  |1+-------------+------------------------------------+       |       |   DEPTH | STENCIL   |
+ *  | |Depth FBO    | DEPTH_STENCIL_ATTACHMENT | SAMPLED |       |       |                     |
+ *  +-+-------------+------------------------------------+       |       +---------------------+
+ *  |2|Texture      | TRANSFER_DST             | SAMPLED |       |       |       COLOR         |
+ *  +-+-------------+------------------------------------+-------+-------+---------------------+
+ *  |3|ReadBuffer   | TRANSFER_DST                       |LINEAR |HOST_  |       -----         |
+ *  +-+-------------+------------------------------------+-------+-------+---------------------+
  */
 int
-vk_create_render_buffer (vk_t *vk, vk_render_buffer_t *depth_buf,
+vk_create_render_buffer (vk_t *vk, vk_render_buffer_t *render_buf,
                          uint32_t width, uint32_t height, VkFormat format,
                          uint32_t usage, VkImageUsageFlags ext_img_usage)
 {
@@ -432,7 +446,9 @@ vk_create_render_buffer (vk_t *vk, vk_render_buffer_t *depth_buf,
     VkDeviceMemory  mem;
     VkImageView     view;
     VkImageUsageFlags     img_usage;
-    VkImageAspectFlagBits img_aspect;
+    VkImageTiling         img_tiling = VK_IMAGE_TILING_OPTIMAL;
+    VkMemoryPropertyFlags mem_props  = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    VkImageAspectFlagBits img_aspect = VK_IMAGE_ASPECT_COLOR_BIT;
 
     if (width == 0 || height == 0)
     {
@@ -445,17 +461,21 @@ vk_create_render_buffer (vk_t *vk, vk_render_buffer_t *depth_buf,
     /* for Color */
     case 0:
         img_usage  = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-        img_aspect = VK_IMAGE_ASPECT_COLOR_BIT;
         break;
     /* for Depth */
     case 1:
-        img_usage  = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT ;
-        img_aspect = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+        img_usage  = VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
+        img_aspect = VK_IMAGE_ASPECT_DEPTH_BIT;// | VK_IMAGE_ASPECT_STENCIL_BIT;
         break;
     /* for Texture */
     case 2:
         img_usage  = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
-        img_aspect = VK_IMAGE_ASPECT_COLOR_BIT;
+        break;
+    /* for Read buffer */
+    case 3:
+        img_usage  = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        img_tiling = VK_IMAGE_TILING_LINEAR;
+        mem_props  = VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
         break;
     default:
         VK_LOGE ("vk_create_render_buffer(): usage=%d", usage);
@@ -475,7 +495,7 @@ vk_create_render_buffer (vk_t *vk, vk_render_buffer_t *depth_buf,
     ci.mipLevels        = 1;
     ci.arrayLayers      = 1;
     ci.samples          = VK_SAMPLE_COUNT_1_BIT;
-    ci.tiling           = VK_IMAGE_TILING_OPTIMAL;
+    ci.tiling           = img_tiling;
     ci.usage            = img_usage;
     ci.sharingMode      = VK_SHARING_MODE_EXCLUSIVE;
     ci.initialLayout    = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -490,10 +510,20 @@ vk_create_render_buffer (vk_t *vk, vk_render_buffer_t *depth_buf,
     VkMemoryAllocateInfo ai = {0};
     ai.sType            = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
     ai.allocationSize   = reqs.size;
-    ai.memoryTypeIndex  = vk_get_memory_type_index (vk, reqs.memoryTypeBits, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+    ai.memoryTypeIndex  = vk_get_memory_type_index (vk, reqs.memoryTypeBits, mem_props);
 
     VK_CHECK (vkAllocateMemory  (vk->dev, &ai, NULL, &mem));
     VK_CHECK (vkBindImageMemory (vk->dev, img, mem, 0));
+
+    /* for ReadBuffer, no need to create ImageView */
+    if (usage == 3)
+    {
+        render_buf->img  = img;
+        render_buf->mem  = mem;
+        render_buf->view = 0;
+
+        return 0;
+    }
 
 
     /* Create "ImageView" for Color/Depth/Texture */
@@ -514,9 +544,31 @@ vk_create_render_buffer (vk_t *vk, vk_render_buffer_t *depth_buf,
 
     VK_CHECK (vkCreateImageView (vk->dev, &vci, NULL, &view));
 
-    depth_buf->img  = img;
-    depth_buf->mem  = mem;
-    depth_buf->view = view;
+    render_buf->img  = img;
+    render_buf->mem  = mem;
+    render_buf->view = view;
+
+    return 0;
+}
+
+
+static int
+vk_destroy_render_buffer (vk_t *vk, vk_render_buffer_t *render_buf)
+{
+    if (render_buf->mem)
+    {
+        vkFreeMemory (vk->dev, render_buf->mem, NULL);
+    }
+
+    if (render_buf->img)
+    {
+        vkDestroyImage (vk->dev, render_buf->img, NULL);
+    }
+
+    if (render_buf->view)
+    {
+        vkDestroyImageView (vk->dev, render_buf->view, NULL);
+    }
 
     return 0;
 }
@@ -734,8 +786,10 @@ vk_upload_texture (vk_t *vk, uint32_t width, uint32_t height, VkFormat format,
 
     VK_CHECK (vkBeginCommandBuffer (command, &commandBI));
 
-    vk_put_image_barrier (vk, command, vk_tex->img, 
-                          0, VK_ACCESS_TRANSFER_WRITE_BIT);
+    vk_insert_image_barrier (vk, command, vk_tex->img,
+                 0,                                  VK_ACCESS_TRANSFER_WRITE_BIT,
+                 VK_IMAGE_LAYOUT_UNDEFINED,          VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                 VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
     VkBufferImageCopy copyRegion = {0};
     copyRegion.imageExtent.width               = width;
@@ -749,8 +803,10 @@ vk_upload_texture (vk_t *vk, uint32_t width, uint32_t height, VkFormat format,
     vkCmdCopyBufferToImage (command, staging_buf.buf, vk_tex->img, 
                             VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &copyRegion);
 
-    vk_put_image_barrier (vk, command, vk_tex->img, 
-                          VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_SHADER_READ_BIT);
+    vk_insert_image_barrier (vk, command, vk_tex->img,
+                 VK_ACCESS_TRANSFER_WRITE_BIT,         VK_ACCESS_SHADER_READ_BIT,
+                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                 VK_PIPELINE_STAGE_TRANSFER_BIT,       VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
 
     VK_CHECK (vkEndCommandBuffer (command));
 
@@ -904,55 +960,12 @@ vk_devmemcpy (vk_t *vk, VkDeviceMemory mem, uint32_t offset, void *psrc, uint32_
  * | Barrier| Layout      | COLOR_ATTACHMENT_OPTIMAL | SHADER_READ_ONLY_OPTIMAL |
  * +--------+-------------+--------------------------+--------------------------+
  */
-
 int
-vk_put_image_barrier (vk_t *vk, VkCommandBuffer command, VkImage image,
-                      VkAccessFlags src_access, VkAccessFlags dst_access)
+vk_insert_image_barrier (vk_t *vk, VkCommandBuffer command, VkImage image,
+                         VkAccessFlags src_access, VkAccessFlags dst_access,
+                         VkImageLayout src_layout, VkImageLayout dst_layout,
+                         VkPipelineStageFlags src_stage, VkPipelineStageFlags dst_stage)
 {
-    VkPipelineStageFlags src_stage = 0;
-    VkPipelineStageFlags dst_stage = 0;
-    VkImageLayout        src_layout= 0;
-    VkImageLayout        dst_layout= 0;
-
-    switch (src_access)
-    {
-    /* finished [nothing] */
-    case 0:
-        src_stage  = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-        src_layout = VK_IMAGE_LAYOUT_UNDEFINED;
-        break;
-    /* finished [Transfer Write] */
-    case VK_ACCESS_TRANSFER_WRITE_BIT:
-        src_stage  = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        src_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        break;
-    /* finished [Color Write] */
-    case VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT:
-        src_stage  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        src_layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-        break;
-    default:
-        VK_LOGE ("vk_put_image_barrier(): src_access=%08x", src_access);
-        return -1;
-    }
-
-    switch (dst_access)
-    {
-    /* staring [Transfer Write] */
-    case VK_ACCESS_TRANSFER_WRITE_BIT:
-        dst_stage  = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        dst_layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        break;
-    /* staring [Shader Read] */
-    case VK_ACCESS_SHADER_READ_BIT:
-        dst_stage  = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        dst_layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-        break;
-    default:
-        VK_LOGE ("vk_put_image_barrier(): dst_access=%08x", dst_access);
-        return -1;
-    }
-
     VkImageMemoryBarrier img_barrier = {0};
     img_barrier.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     img_barrier.srcAccessMask       = src_access;
@@ -1151,6 +1164,178 @@ vk_destroy_default_blend_state (vk_t *vk, VkPipelineColorBlendStateCreateInfo *s
     VK_FREE (state->pAttachments);
     return 0;
 }
+
+
+/* ----------------------------------------------------------------------- *
+ *  read pixels from current swapchain.
+ * ----------------------------------------------------------------------- */
+int
+vk_read_pixels (vk_t *vk, int x, int y, 
+                uint32_t dst_width, uint32_t dst_height, void *dst_buf)
+{
+    bool supportsBlit = true;
+    VkFormatProperties formatProps;
+
+    // Check if the device supports blitting from optimal images (the swapchain images are in optimal format)
+    vkGetPhysicalDeviceFormatProperties (vk->phydev, vk->sfc_fmt.format, &formatProps);
+    if (!(formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_SRC_BIT))
+    {
+        VK_PRINT ("Device does not support blitting from optimal tiled images, using copy instead of blit!\n");
+        supportsBlit = false;
+    }
+
+    // Check if the device supports blitting to RGBA8888 linear images 
+    vkGetPhysicalDeviceFormatProperties(vk->phydev, VK_FORMAT_R8G8B8A8_UNORM, &formatProps);
+    if (!(formatProps.linearTilingFeatures & VK_FORMAT_FEATURE_BLIT_DST_BIT))
+    {
+        VK_PRINT ("Device does not support blitting to linear tiled images, using copy instead of blit!\n");
+        supportsBlit = false;
+    }
+
+    // Source for the copy is the last rendered swapchain image
+    VkImage srcImage = vk->swapchain_imgs[vk->image_index];
+    uint32_t width   = vk->swapchain_extent.width;
+    uint32_t height  = vk->swapchain_extent.height;
+
+    // Destination for the copy
+    vk_render_buffer_t read_buf;
+    vk_create_render_buffer (vk, &read_buf, 0, 0, VK_FORMAT_R8G8B8A8_UNORM, 3, 0);
+    VkImage        dstImage       = read_buf.img;
+    VkDeviceMemory dstImageMemory = read_buf.mem;
+
+    /* create Command buffer */
+    VkCommandBuffer command;
+    VkCommandBufferAllocateInfo cai = {0};
+    cai.sType                = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+    cai.commandBufferCount   = 1;
+    cai.commandPool          = vk->cmd_pool;
+    cai.level                = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+    VK_CHECK (vkAllocateCommandBuffers (vk->dev, &cai, &command));
+
+    VkCommandBufferBeginInfo commandBI = {0};
+    commandBI.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    VK_CHECK (vkBeginCommandBuffer (command, &commandBI));
+
+    vk_insert_image_barrier (vk, command, dstImage,
+                 0,                              VK_ACCESS_TRANSFER_WRITE_BIT,
+                 VK_IMAGE_LAYOUT_UNDEFINED,      VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+    vk_insert_image_barrier (vk, command, srcImage,
+                 VK_ACCESS_MEMORY_READ_BIT,      VK_ACCESS_TRANSFER_READ_BIT,
+                 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+    // If source and destination support blit 
+    // we'll blit as this also does automatic format conversion (e.g. from BGR to RGB)
+    if (supportsBlit)
+    {
+        VkOffset3D blitSize = {width, height, 1};
+        VkImageBlit imageBlitRegion = {0};
+        imageBlitRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageBlitRegion.srcSubresource.layerCount = 1;
+        imageBlitRegion.srcOffsets[1]             = blitSize;
+        imageBlitRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageBlitRegion.dstSubresource.layerCount = 1;
+        imageBlitRegion.dstOffsets[1]             = blitSize;
+
+        vkCmdBlitImage (command,
+                        srcImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        1, &imageBlitRegion, VK_FILTER_NEAREST);
+    }
+    // Otherwise use image copy (requires us to manually flip components)
+    else
+    {
+        VkImageCopy imageCopyRegion = {0};
+        imageCopyRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageCopyRegion.srcSubresource.layerCount = 1;
+        imageCopyRegion.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+        imageCopyRegion.dstSubresource.layerCount = 1;
+        imageCopyRegion.extent.width              = width;
+        imageCopyRegion.extent.height             = height;
+        imageCopyRegion.extent.depth              = 1;
+
+        vkCmdCopyImage (command,
+                        srcImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                        dstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                        1, &imageCopyRegion);
+    }
+
+    // Transition destination image to general layout, 
+    // which is the required layout for mapping the image memory later on
+    vk_insert_image_barrier (vk, command, dstImage,
+                 VK_ACCESS_TRANSFER_WRITE_BIT,         VK_ACCESS_MEMORY_READ_BIT,
+                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL,
+                 VK_PIPELINE_STAGE_TRANSFER_BIT,       VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+    // Transition back the swap chain image after the blit is done
+    vk_insert_image_barrier (vk, command, srcImage,
+                 VK_ACCESS_TRANSFER_READ_BIT,          VK_ACCESS_MEMORY_READ_BIT,
+                 VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                 VK_PIPELINE_STAGE_TRANSFER_BIT,       VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+    VK_CHECK (vkEndCommandBuffer (command));
+
+    /* Submit command */
+    VkSubmitInfo submitInfo = {0};
+    submitInfo.sType              = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers    = &command;
+    VK_CHECK (vkQueueSubmit (vk->devq, 1, &submitInfo, VK_NULL_HANDLE));
+
+    /* wait copy done */
+    VK_CHECK (vkDeviceWaitIdle (vk->dev));
+
+    // Get layout of the image (including row pitch)
+    VkImageSubresource  subResource = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 0 };
+    VkSubresourceLayout subResourceLayout;
+    vkGetImageSubresourceLayout (vk->dev, dstImage, &subResource, &subResourceLayout);
+
+    const char* img_buf;
+    vkMapMemory (vk->dev, dstImageMemory, 0, VK_WHOLE_SIZE, 0, (void**)&img_buf);
+    img_buf += subResourceLayout.offset;
+
+    int need_swizzle_BGRA_to_RGBA = 0;
+    if (supportsBlit == 0)
+    {
+        if ((vk->sfc_fmt.format == VK_FORMAT_B8G8R8A8_UNORM) ||
+            (vk->sfc_fmt.format == VK_FORMAT_B8G8R8A8_SNORM) ||
+            (vk->sfc_fmt.format == VK_FORMAT_B8G8R8A8_SRGB))
+        {
+            need_swizzle_BGRA_to_RGBA = 1;
+        }
+    }
+
+    for (uint32_t y = 0; y < height; y++) 
+    {
+        if (need_swizzle_BGRA_to_RGBA)
+        {
+            char *src8 = (char *)img_buf;
+            char *dst8 = (char *)dst_buf;
+            for (uint32_t x = 0; x < width; x++) 
+            {
+                dst8[x * 4 + 0] = src8[x * 4 + 2];
+                dst8[x * 4 + 1] = src8[x * 4 + 1];
+                dst8[x * 4 + 2] = src8[x * 4 + 0];
+                dst8[x * 4 + 3] = src8[x * 4 + 3];
+            }
+        }
+        else
+        {
+            memcpy (dst_buf, img_buf, width * 4);
+        }
+        img_buf += subResourceLayout.rowPitch;
+        dst_buf += width * 4;
+    }
+
+    // Clean up resources
+    vkUnmapMemory (vk->dev, dstImageMemory);
+    vk_destroy_render_buffer (vk, &read_buf);
+
+    return 0;
+}
+
 
 
 /* ----------------------------------------------------------------------- *

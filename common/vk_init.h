@@ -30,8 +30,10 @@ int     vk_create_render_buffer (vk_t *vk, vk_render_buffer_t *depth_buf,
                                  uint32_t width, uint32_t height, VkFormat format,
                                  uint32_t usage, VkImageUsageFlags ext_img_usage);
 
-int     vk_put_image_barrier (vk_t *vk, VkCommandBuffer command, VkImage image,
-                              VkAccessFlags src_access, VkAccessFlags dst_access);
+int     vk_insert_image_barrier (vk_t *vk, VkCommandBuffer command, VkImage image,
+                         VkAccessFlags src_access, VkAccessFlags dst_access,
+                         VkImageLayout src_layout, VkImageLayout dst_layout,
+                         VkPipelineStageFlags src_stage, VkPipelineStageFlags dst_stage);
 
 /* utility functions for vkCreateGraphicsPipelines() */
 int     vk_get_default_input_assembly_state (vk_t *vk, VkPipelineInputAssemblyStateCreateInfo *state,
@@ -50,6 +52,8 @@ int     vk_destroy_default_rasterizer_state (vk_t *vk, VkPipelineRasterizationSt
 int     vk_destroy_default_multisample_state (vk_t *vk, VkPipelineMultisampleStateCreateInfo *state);
 int     vk_destroy_default_depth_stencil_state (vk_t *vk, VkPipelineDepthStencilStateCreateInfo *state);
 int     vk_destroy_default_blend_state (vk_t *vk, VkPipelineColorBlendStateCreateInfo *state);
+
+int     vk_read_pixels (vk_t *vk, int x, int y, uint32_t width, uint32_t height, void *data);
 
 int     vk_build_struct_chain (VkBaseOutStructure *head, vk_struct_chain_info_t *chain_info, uint32_t chain_len);
 
