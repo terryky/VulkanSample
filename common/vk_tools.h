@@ -11,6 +11,7 @@ extern "C" {
 
 #include <stdio.h>
 #include <vulkan/vulkan.h>
+#include "vk_enum_string_helper.h"
 
 #define VK_LOGI(fmt, ...) fprintf(stderr, "%s(%d): " fmt "\n", __FILE__, __LINE__, __VA_ARGS__)
 #define VK_LOGE(fmt, ...) fprintf(stderr, "%s(%d): " fmt "\n", __FILE__, __LINE__, __VA_ARGS__)
@@ -22,7 +23,7 @@ extern "C" {
     VkResult vkret = (f);                                                       \
     if (vkret != VK_SUCCESS)                                                    \
     {                                                                           \
-        VK_LOGE("ERR: vkret = %x", vkret);                                      \
+        VK_LOGE("###ERR### %s: %s(%d) ", #f, string_VkResult (vkret), vkret);   \
     }                                                                           \
 }
 
