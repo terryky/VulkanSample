@@ -31,7 +31,7 @@ intern_atom_helper (xcb_connection_t *conn, bool only_if_exists, const char *str
 
 
 int
-vkin_winsys_init (int win_w, int win_h)
+vkin_winsys_init (vk_t *vk, int win_w, int win_h)
 {
     const xcb_setup_t *setup;
     xcb_screen_iterator_t iter;
@@ -118,7 +118,7 @@ vkin_winsys_init (int win_w, int win_h)
 
 
 VkSurfaceKHR
-vkin_winsys_create_surface (VkInstance instance)
+vkin_winsys_create_surface (vk_t *vk)
 {
     VkSurfaceKHR surface;
 
@@ -127,7 +127,7 @@ vkin_winsys_create_surface (VkInstance instance)
     surfaceCreateInfo.connection = connection;
     surfaceCreateInfo.window     = window;
 
-    VK_CHECK (vkCreateXcbSurfaceKHR (instance, &surfaceCreateInfo, NULL, &surface));
+    VK_CHECK (vkCreateXcbSurfaceKHR (vk->instance, &surfaceCreateInfo, NULL, &surface));
 
     return surface;
 }

@@ -9,8 +9,8 @@
 extern "C" {
 #endif
 
-int vkin_winsys_init (int win_w, int win_h);
-VkSurfaceKHR vkin_winsys_create_surface (VkInstance instance);
+int vkin_winsys_init (vk_t *vk, int win_w, int win_h);
+VkSurfaceKHR vkin_winsys_create_surface (vk_t *vk);
 
 #ifdef __cplusplus
 }
