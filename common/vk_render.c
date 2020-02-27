@@ -13,21 +13,37 @@
 int
 vk_render (vk_t *vk, uint32_t flags, void (*cb_make_command)(VkCommandBuffer, void *), void *usr_data)
 {
-    uint32_t nextImageIndex = 0;
-    VK_CHECK (vkAcquireNextImageKHR (vk->dev, vk->swapchain, UINT64_MAX, 
-                           vk->sem_present_complete, VK_NULL_HANDLE, &nextImageIndex));
+    uint32_t run_index = vk->swapchain_run_index;
+    uint32_t img_index = 0;
 
-    VkCommandBuffer command   = vk->cmd_bufs[nextImageIndex];
-    VkFence         cmd_fence = vk->fences[nextImageIndex];
+    /*
+     *  Get the index of the next image to use. (returned image may not be ready yet.)
+     *   - Before CPU use, need to wait for the FENCE.
+     *   - Before GPU use, need to wait for the SEMAPHORE.
+     */
+#if defined (USE_SEMAPHORE_TO_WAIT_PRESENT_COMPLETE)
+    VK_CHECK (vkAcquireNextImageKHR (vk->dev, vk->swapchain, UINT64_MAX, 
+                           vk->sem_present_complete[run_index], VK_NULL_HANDLE, &img_index));
+#else
+    VK_CHECK (vkResetFences (vk->dev, 1, &vk->fence_present_complete[run_index]));
+    VK_CHECK (vkAcquireNextImageKHR (vk->dev, vk->swapchain, UINT64_MAX, 
+                           VK_NULL_HANDLE, vk->fence_present_complete[run_index], &img_index));
+    VK_CHECK (vkWaitForFences (vk->dev, 1, &vk->fence_present_complete[run_index], VK_TRUE, UINT64_MAX));
+#endif
+    
+    VkCommandBuffer command   = vk->cmd_bufs[img_index];
+    VkFence         cmd_fence = vk->fences[img_index];
 
     VK_CHECK (vkWaitForFences (vk->dev, 1, &cmd_fence, VK_TRUE, UINT64_MAX));
+    VK_CHECK (vkResetFences (vk->dev, 1, &cmd_fence));
+
 
     /* Begin Command buffer */
     VkCommandBufferBeginInfo commandBI = {0};
     commandBI.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     VK_CHECK (vkBeginCommandBuffer (command, &commandBI));
 
-    vk->image_index = nextImageIndex;
+    vk->image_index = img_index;
 
     /* if use default RenderPass, begin it. */
     if (!flags)
@@ -44,7 +60,7 @@ vk_render (vk_t *vk, uint32_t flags, void (*cb_make_command)(VkCommandBuffer, vo
         VkRenderPassBeginInfo renderPassBI = {0};
         renderPassBI.sType              = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
         renderPassBI.renderPass         = vk->render_pass;
-        renderPassBI.framebuffer        = vk->framebuffers[nextImageIndex];
+        renderPassBI.framebuffer        = vk->framebuffers[img_index];
         renderPassBI.renderArea.offset.x= 0;
         renderPassBI.renderArea.offset.y= 0;
         renderPassBI.renderArea.extent  = vk->swapchain_extent;
@@ -79,11 +95,12 @@ vk_render (vk_t *vk, uint32_t flags, void (*cb_make_command)(VkCommandBuffer, vo
     submitInfo.commandBufferCount   = 1;
     submitInfo.pCommandBuffers      = &command;
     submitInfo.pWaitDstStageMask    = &waitStageMask;
+#if defined (USE_SEMAPHORE_TO_WAIT_PRESENT_COMPLETE)
     submitInfo.waitSemaphoreCount   = 1;
-    submitInfo.pWaitSemaphores      = &vk->sem_present_complete;
+    submitInfo.pWaitSemaphores      = &vk->sem_present_complete[run_index];
+#endif
     submitInfo.signalSemaphoreCount = 1;
-    submitInfo.pSignalSemaphores    = &vk->sem_render_complete;
-    vkResetFences (vk->dev, 1, &cmd_fence);
+    submitInfo.pSignalSemaphores    = &vk->sem_render_complete[run_index];
     vkQueueSubmit (vk->devq, 1, &submitInfo, cmd_fence);
 
 
@@ -92,10 +109,12 @@ vk_render (vk_t *vk, uint32_t flags, void (*cb_make_command)(VkCommandBuffer, vo
     presentInfo.sType               = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.swapchainCount      = 1;
     presentInfo.pSwapchains         = &vk->swapchain;
-    presentInfo.pImageIndices       = &nextImageIndex;
+    presentInfo.pImageIndices       = &img_index;
     presentInfo.waitSemaphoreCount  = 1;
-    presentInfo.pWaitSemaphores     = &vk->sem_render_complete;
+    presentInfo.pWaitSemaphores     = &vk->sem_render_complete[run_index];
     vkQueuePresentKHR (vk->devq, &presentInfo);
+
+    vk->swapchain_run_index = (run_index + 1) % vk->swapchain_img_count;
 
     return 0;
 }

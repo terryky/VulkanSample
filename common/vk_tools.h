@@ -100,6 +100,8 @@ typedef struct _vk_t
     VkExtent2D                          swapchain_extent;
     VkImage                             *swapchain_imgs;
     VkImageView                         *swapchain_views;
+    uint32_t                            swapchain_img_count;
+    uint32_t                            swapchain_run_index;
 
     /* Depth Buffer */
     vk_render_buffer_t                  depth_buf;
@@ -109,8 +111,9 @@ typedef struct _vk_t
 
     VkCommandBuffer                     *cmd_bufs;
     VkFence                             *fences;
-    VkSemaphore                         sem_render_complete;
-    VkSemaphore                         sem_present_complete;
+    VkSemaphore                         *sem_render_complete;
+    VkSemaphore                         *sem_present_complete;
+    VkFence                             *fence_present_complete;
 
     /* for Render */
     uint32_t                            image_index;

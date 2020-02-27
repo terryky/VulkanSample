@@ -255,7 +255,7 @@ vkin_create_command_pool (vk_t *vk)
 static int
 vkin_create_surface (vk_t *vk, VkFormat format)
 {
-    vk->surface = vkin_winsys_create_surface (vk->instance);
+    vk->surface = vkin_winsys_create_surface (vk);
 
     /* available format */
     uint32_t count = 0;
@@ -298,7 +298,18 @@ vkin_create_swap_chain (vk_t *vk, int win_w, int win_h, VkPresentModeKHR present
         extent.height = win_h;
     }
 
+#if 1 /* use Triple buffer */
+    uint32_t imgCount = vk->sfc_caps.minImageCount + 1;
+    if (vk->sfc_caps.maxImageCount > 0) /* 0 means that there is no limit on the number of images */
+    {
+        if (imgCount > vk->sfc_caps.maxImageCount)
+        {
+            imgCount = vk->sfc_caps.maxImageCount;
+        }
+    }
+#else
     uint32_t imgCount = vk->sfc_caps.minImageCount;
+#endif
 
     /* available present mode */
     uint32_t count = 0;
@@ -350,7 +361,14 @@ vkin_create_swap_chain (vk_t *vk, int win_w, int win_h, VkPresentModeKHR present
 
     VK_CHECK (vkCreateSwapchainKHR (vk->dev, &ci, NULL, &vk->swapchain));
 
-    vk->swapchain_extent = extent;
+
+    uint32_t swapchain_img_count;
+    VK_CHECK (vkGetSwapchainImagesKHR (vk->dev, vk->swapchain, &swapchain_img_count, NULL));
+
+    vk->swapchain_extent    = extent;
+    vk->swapchain_img_count = swapchain_img_count;
+
+    VK_PRINT ("swapchain_img_count = %d\n", swapchain_img_count);
     return 0;
 }
 
@@ -691,11 +709,31 @@ vkin_create_command_buffer (vk_t *vk)
 static int
 vkin_create_semaphore (vk_t *vk)
 {
+    uint32_t imageCount = vk->swapchain_img_count;
+
+    /* allocate semaphores */
+    vk->sem_render_complete  = VK_CALLOC (VkSemaphore, imageCount);
+    vk->sem_present_complete = VK_CALLOC (VkSemaphore, imageCount);
+
     VkSemaphoreCreateInfo ci = {0};
     ci.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
-    VK_CHECK (vkCreateSemaphore (vk->dev, &ci, NULL, &vk->sem_render_complete));
-    VK_CHECK (vkCreateSemaphore (vk->dev, &ci, NULL, &vk->sem_present_complete));
+    for (uint32_t i = 0; i < imageCount; i ++)
+    {
+        VK_CHECK (vkCreateSemaphore (vk->dev, &ci, NULL, &vk->sem_render_complete[i]));
+        VK_CHECK (vkCreateSemaphore (vk->dev, &ci, NULL, &vk->sem_present_complete[i]));
+    }
+
+    /* allocate fences */
+    vk->fence_present_complete = VK_CALLOC (VkFence, imageCount);
+
+    VkFenceCreateInfo fci = {0};
+    fci.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+    fci.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+    for (uint32_t i = 0; i < imageCount; i ++)
+    {
+        VK_CHECK (vkCreateFence (vk->dev, &fci, NULL, &vk->fence_present_complete[i]));
+    }
 
     return 0;
 }
@@ -1373,7 +1411,7 @@ vk_init (int win_w, int win_h)
 
     vkin_create_instance (vk, "VulkanApp");
 
-    vkin_winsys_init (win_w, win_h);
+    vkin_winsys_init (vk, win_w, win_h);
 
     vkin_debug_init (vk->instance);
 
