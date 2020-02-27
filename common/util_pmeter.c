@@ -7,6 +7,7 @@
 #include <string.h>
 #include <stdbool.h>
 #include <assert.h>
+#include <time.h>
 #include "vk_tools.h"
 #include "vk_init.h"
 #include "vk_render.h"
