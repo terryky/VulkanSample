@@ -9,12 +9,23 @@
 #include "vk_tools.h"
 #include "vk_render.h"
 
+#define USE_SEMAPHORE_TO_WAIT_PRESENT_COMPLETE
+//#define USE_MEASURE_SWAP_TIME
+
+#if defined (USE_MEASURE_SWAP_TIME)
+#include "util_pmeter.h"
+#endif
 
 int
 vk_render (vk_t *vk, uint32_t flags, void (*cb_make_command)(VkCommandBuffer, void *), void *usr_data)
 {
     uint32_t run_index = vk->swapchain_run_index;
     uint32_t img_index = 0;
+
+#if defined (USE_MEASURE_SWAP_TIME)
+    static double ttime[10];
+    ttime[0] = pmeter_get_time_ms ();
+#endif
 
     /*
      *  Get the index of the next image to use. (returned image may not be ready yet.)
@@ -31,12 +42,19 @@ vk_render (vk_t *vk, uint32_t flags, void (*cb_make_command)(VkCommandBuffer, vo
     VK_CHECK (vkWaitForFences (vk->dev, 1, &vk->fence_present_complete[run_index], VK_TRUE, UINT64_MAX));
 #endif
     
+#if defined (USE_MEASURE_SWAP_TIME)
+    ttime[1] = pmeter_get_time_ms ();
+#endif
+
     VkCommandBuffer command   = vk->cmd_bufs[img_index];
     VkFence         cmd_fence = vk->fences[img_index];
 
     VK_CHECK (vkWaitForFences (vk->dev, 1, &cmd_fence, VK_TRUE, UINT64_MAX));
     VK_CHECK (vkResetFences (vk->dev, 1, &cmd_fence));
 
+#if defined (USE_MEASURE_SWAP_TIME)
+    ttime[2] = pmeter_get_time_ms ();
+#endif
 
     /* Begin Command buffer */
     VkCommandBufferBeginInfo commandBI = {0};
@@ -70,6 +88,10 @@ vk_render (vk_t *vk, uint32_t flags, void (*cb_make_command)(VkCommandBuffer, vo
         vkCmdBeginRenderPass (command, &renderPassBI, VK_SUBPASS_CONTENTS_INLINE);
     }
 
+#if defined (USE_MEASURE_SWAP_TIME)
+    ttime[3] = pmeter_get_time_ms ();
+#endif
+
     /* ------------------------------------------- *
      *  Callback to make render commands
      * ------------------------------------------- */
@@ -78,6 +100,9 @@ vk_render (vk_t *vk, uint32_t flags, void (*cb_make_command)(VkCommandBuffer, vo
         cb_make_command (command, usr_data);
     }
 
+#if defined (USE_MEASURE_SWAP_TIME)
+    ttime[4] = pmeter_get_time_ms ();
+#endif
 
     /* if use default RenderPass, end it. */
     if (!flags)
@@ -103,6 +128,9 @@ vk_render (vk_t *vk, uint32_t flags, void (*cb_make_command)(VkCommandBuffer, vo
     submitInfo.pSignalSemaphores    = &vk->sem_render_complete[run_index];
     vkQueueSubmit (vk->devq, 1, &submitInfo, cmd_fence);
 
+#if defined (USE_MEASURE_SWAP_TIME)
+    ttime[5] = pmeter_get_time_ms ();
+#endif
 
     /* Present */
     VkPresentInfoKHR presentInfo = {0};
@@ -115,6 +143,17 @@ vk_render (vk_t *vk, uint32_t flags, void (*cb_make_command)(VkCommandBuffer, vo
     vkQueuePresentKHR (vk->devq, &presentInfo);
 
     vk->swapchain_run_index = (run_index + 1) % vk->swapchain_img_count;
+
+#if defined (USE_MEASURE_SWAP_TIME)
+    ttime[6] = pmeter_get_time_ms ();
+    fprintf (stderr, "[%d:%d], %6.1f, %6.1f, %6.1f, %6.1f, %6.1f, %6.1f\n", run_index, img_index,
+                ttime[1]-ttime[0],
+                ttime[2]-ttime[1],
+                ttime[3]-ttime[2],
+                ttime[4]-ttime[3],
+                ttime[5]-ttime[4],
+                ttime[6]-ttime[5]);
+#endif
 
     return 0;
 }
