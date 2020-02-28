@@ -265,11 +265,13 @@ vkin_create_surface (vk_t *vk, VkFormat format)
 
     for (uint32_t i = 0; i < count; i ++)
     {
+        VK_PRINT ("SurfaceFormat[%d/%d]: %s(%d)", i, count, string_VkFormat (formats[i].format), formats[i].format);
         if (formats[i].format == format)
         {
             vk->sfc_fmt = formats[i];
-            VK_PRINT ("surface_fmt[%2d/%2d] \n", i, count);
+            VK_PRINT (" <<<selected>>>");
         }
+        VK_PRINT ("\n");
     }
 
     /* capabilities */
@@ -1423,7 +1425,12 @@ vk_init (int win_w, int win_h)
 
     vkin_create_command_pool (vk);
 
-    vkin_create_surface (vk, VK_FORMAT_B8G8R8A8_UNORM);
+#if defined (VK_USE_PLATFORM_XCB_KHR)
+    VkFormat reqfmt = VK_FORMAT_B8G8R8A8_UNORM;
+#else
+    VkFormat reqfmt = VK_FORMAT_A8B8G8R8_UNORM_PACK32;
+#endif
+    vkin_create_surface (vk, reqfmt);
 
     vkin_create_swap_chain (vk, win_w, win_h, VK_PRESENT_MODE_FIFO_KHR);
 
