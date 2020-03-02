@@ -118,6 +118,7 @@ vkin_select_physical_device (vk_t *vk)
     VK_PRINT ("phymem_props: memoryTypeCount = %d\n", vk->phymem_props.memoryTypeCount);
 
 
+#if defined(VK_VERSION_1_1)
     if (dprops.apiVersion >= VK_MAKE_VERSION (1, 1, 0))
     {
         vk_struct_chain_info_t chain_info[1] = {0};
@@ -142,6 +143,7 @@ vkin_select_physical_device (vk_t *vk)
                             ddprop->conformanceVersion.patch);
         VK_PRINT ("------------------------------------------\n");
     }
+#endif
     
     return 0;
 }
