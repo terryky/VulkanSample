@@ -197,3 +197,10 @@ vkin_winsys_create_surface (vk_t *vk)
 
     return surface;
 }
+
+int
+vkin_winsys_swap (vk_t *vk)
+{
+    return 0;
+}
+

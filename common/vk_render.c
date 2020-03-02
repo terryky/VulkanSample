@@ -8,6 +8,7 @@
 #include <vulkan/vulkan.h>
 #include "vk_tools.h"
 #include "vk_render.h"
+#include "vk_winsys.h"
 
 #define USE_SEMAPHORE_TO_WAIT_PRESENT_COMPLETE
 //#define USE_MEASURE_SWAP_TIME
@@ -141,6 +142,8 @@ vk_render (vk_t *vk, uint32_t flags, void (*cb_make_command)(VkCommandBuffer, vo
     presentInfo.waitSemaphoreCount  = 1;
     presentInfo.pWaitSemaphores     = &vk->sem_render_complete[run_index];
     vkQueuePresentKHR (vk->devq, &presentInfo);
+
+    vkin_winsys_swap (vk);
 
     vk->swapchain_run_index = (run_index + 1) % vk->swapchain_img_count;
 
